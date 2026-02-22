@@ -257,3 +257,7 @@ sc query ClawPanel
 ## License
 
 [CC BY-NC-SA 4.0](LICENSE) © 2026 — **禁止商用**
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=zhaoxinyi02/ClawPanel&type=date&legend=top-left)](https://www.star-history.com/#zhaoxinyi02/ClawPanel&type=date&legend=top-left)
