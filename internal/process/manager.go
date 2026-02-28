@@ -268,17 +268,23 @@ func (m *Manager) ensureOpenClawConfig() {
 	}
 	cfgPath := filepath.Join(ocDir, "openclaw.json")
 
+	var cfg map[string]interface{}
+	created := false
+
 	data, err := os.ReadFile(cfgPath)
 	if err != nil {
-		return
+		// 配置文件不存在，创建目录并初始化空配置
+		os.MkdirAll(filepath.Dir(cfgPath), 0755)
+		cfg = map[string]interface{}{}
+		created = true
+	} else {
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			cfg = map[string]interface{}{}
+			created = true
+		}
 	}
 
-	var cfg map[string]interface{}
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return
-	}
-
-	changed := false
+	changed := created
 
 	// Ensure gateway.mode = "local"
 	gw, _ := cfg["gateway"].(map[string]interface{})

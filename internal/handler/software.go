@@ -1111,7 +1111,20 @@ if ! command -v docker &>/dev/null; then
       ;;
   esac
 
-  # Configure Docker mirror
+  systemctl enable docker
+  systemctl start docker
+  echo "✅ Docker $(docker --version) 安装完成"
+fi
+
+if ! docker info &>/dev/null; then
+  echo "⚠️ Docker 服务未运行，正在启动..."
+  systemctl start docker
+  sleep 2
+fi
+
+# Configure Docker mirror (always ensure, even if Docker was pre-installed)
+if [ ! -f /etc/docker/daemon.json ] || ! grep -q "registry-mirrors" /etc/docker/daemon.json 2>/dev/null; then
+  echo "🔧 配置 Docker 镜像加速器..."
   mkdir -p /etc/docker
   cat > /etc/docker/daemon.json << 'DOCKEREOF'
 {
@@ -1121,14 +1134,8 @@ if ! command -v docker &>/dev/null; then
   ]
 }
 DOCKEREOF
-  systemctl enable docker
-  systemctl start docker
-  echo "✅ Docker $(docker --version) 安装完成"
-fi
-
-if ! docker info &>/dev/null; then
-  echo "⚠️ Docker 服务未运行，正在启动..."
-  systemctl start docker
+  systemctl daemon-reload
+  systemctl restart docker
   sleep 2
 fi
 
