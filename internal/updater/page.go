@@ -227,7 +227,9 @@ async function checkVersion() {
 function confirmUpdate() {
   const t = versionInfo ? '确定要从 ' + versionInfo.currentVersion + ' 更新到 ' + versionInfo.latestVersion + ' 吗？\\n\\n更新过程中 ClawPanel 面板服务将暂时停止。' : '确定要开始更新吗？';
   document.getElementById('confirm-text').textContent = t;
-  document.getElementById('confirm-modal').classList.remove('hidden');
+  const modal = document.getElementById('confirm-modal');
+  modal.style.display = '';
+  modal.classList.remove('hidden');
 }
 
 function closeModal() {
@@ -235,18 +237,27 @@ function closeModal() {
 }
 
 async function doUpdate() {
-  closeModal();
+  const modal = document.getElementById('confirm-modal');
+  modal.classList.add('hidden');
+  modal.style.display = 'none';
   showProgress();
   try {
     const r = await api('start-update', {method:'POST'});
     if (!r.ok) {
-      alert('启动更新失败: ' + (r.error||''));
+      addLog('❌ 启动更新失败: ' + (r.error||''));
       return;
     }
     startPolling();
   } catch(e) {
-    alert('网络错误: ' + e.message);
+    addLog('⚠️ 启动请求发送完成（服务可能正在重启中）');
+    startPolling();
   }
+}
+
+function addLog(msg) {
+  const logEl = document.getElementById('log-box');
+  logEl.innerHTML += '<div>' + msg + '</div>';
+  logEl.scrollTop = logEl.scrollHeight;
 }
 
 async function handleUpload(e) {
