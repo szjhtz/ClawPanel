@@ -138,15 +138,102 @@ func ValidateToken(token string, panelPort int) bool {
 	return hmac.Equal([]byte(sig), []byte(expectedSig))
 }
 
-// Start starts the updater HTTP server
+// Start spawns the updater as a detached child process.
+// Uses systemd-run --scope to launch outside the clawpanel.service cgroup,
+// so systemctl stop clawpanel won't kill the updater child.
 func (s *Server) Start() {
-	mux := http.NewServeMux()
+	// Kill any leftover standalone updater from a previous run
+	s.killStandaloneUpdater()
+	time.Sleep(500 * time.Millisecond)
 
-	// Serve the updater frontend page
+	bin := s.panelBin
+	logFile := filepath.Join(s.dataDir, "updater.log")
+
+	if runtime.GOOS != "windows" {
+		// Use systemd-run --scope to escape the parent's cgroup.
+		// When systemctl stop clawpanel runs, systemd kills all processes in
+		// clawpanel.service's cgroup. By launching via systemd-run --scope,
+		// the updater child lives in its own transient scope and survives.
+		cmd := exec.Command("systemd-run", "--scope", "--unit=clawpanel-updater",
+			"/bin/bash", "-c",
+			fmt.Sprintf("%s --updater-standalone %s %s %d >%s 2>&1",
+				bin, s.currentVersion, s.dataDir, s.panelPort, logFile),
+		)
+		cmd.SysProcAttr = sysProcAttr()
+		cmd.Dir = filepath.Dir(bin)
+		if err := cmd.Start(); err != nil {
+			log.Printf("[Updater] systemd-run 启动失败: %v, 尝试直接启动...", err)
+			s.startDirectChild(bin, logFile)
+			return
+		}
+		cmd.Process.Release()
+	} else {
+		s.startDirectChild(bin, logFile)
+		return
+	}
+
+	s.running = true
+	log.Printf("[Updater] 独立更新子进程已启动 (systemd-run scope) → http://0.0.0.0:%d/updater", UpdaterPort)
+}
+
+// startDirectChild starts the updater as a direct detached child (fallback for non-systemd or Windows)
+func (s *Server) startDirectChild(bin, logFile string) {
+	cmd := exec.Command(bin,
+		"--updater-standalone",
+		s.currentVersion,
+		s.dataDir,
+		fmt.Sprintf("%d", s.panelPort),
+	)
+	cmd.SysProcAttr = sysProcAttr()
+	cmd.Dir = filepath.Dir(bin)
+	lf, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err == nil {
+		cmd.Stdout = lf
+		cmd.Stderr = lf
+	}
+	if err := cmd.Start(); err != nil {
+		log.Printf("[Updater] 启动独立更新子进程失败: %v", err)
+		return
+	}
+	cmd.Process.Release()
+	s.running = true
+	log.Printf("[Updater] 独立更新子进程已启动 (direct) → http://0.0.0.0:%d/updater", UpdaterPort)
+}
+
+// Stop kills the standalone updater child process
+func (s *Server) Stop() {
+	s.killStandaloneUpdater()
+}
+
+// killStandaloneUpdater kills any running standalone updater process
+func (s *Server) killStandaloneUpdater() {
+	if runtime.GOOS == "windows" {
+		return
+	}
+	// Find and kill processes with --updater-standalone
+	out, _ := exec.Command("pgrep", "-f", "--updater-standalone").Output()
+	pids := strings.Fields(strings.TrimSpace(string(out)))
+	myPid := fmt.Sprintf("%d", os.Getpid())
+	for _, pid := range pids {
+		if pid == myPid {
+			continue
+		}
+		exec.Command("kill", pid).Run()
+	}
+}
+
+// IsRunning returns whether the updater server is running
+func (s *Server) IsRunning() bool {
+	return s.running
+}
+
+// RunStandalone runs the updater as a standalone process (called from --updater-standalone mode).
+// This is a BLOCKING call — it runs the HTTP server and only exits after the update is done
+// and an auto-shutdown timer fires (5 minutes after update completes or 30 minutes idle).
+func (s *Server) RunStandalone() {
+	mux := http.NewServeMux()
 	mux.HandleFunc("/updater", s.handlePage)
 	mux.HandleFunc("/updater/", s.handlePage)
-
-	// API endpoints
 	mux.HandleFunc("/updater/api/validate", s.handleValidate)
 	mux.HandleFunc("/updater/api/check-version", s.handleCheckVersion)
 	mux.HandleFunc("/updater/api/start-update", s.handleStartUpdate)
@@ -157,27 +244,36 @@ func (s *Server) Start() {
 		Addr:    fmt.Sprintf("0.0.0.0:%d", UpdaterPort),
 		Handler: mux,
 	}
-
 	s.running = true
+
+	// Auto-shutdown: exit after 30 min idle or 5 min after update finishes
 	go func() {
-		log.Printf("[Updater] 独立更新服务已启动 → http://0.0.0.0:%d/updater", UpdaterPort)
-		if err := s.srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("[Updater] 服务启动失败: %v", err)
+		for {
+			time.Sleep(10 * time.Second)
+			s.mu.Lock()
+			phase := s.state.Phase
+			finishedAt := s.state.FinishedAt
+			s.mu.Unlock()
+
+			if phase == "done" || phase == "error" || phase == "rolled_back" {
+				if finishedAt != "" {
+					if t, err := time.Parse(time.RFC3339, finishedAt); err == nil {
+						if time.Since(t) > 5*time.Minute {
+							log.Println("[Updater-Standalone] 更新完成超过5分钟，自动退出")
+							s.srv.Close()
+							return
+						}
+					}
+				}
+			}
 		}
-		s.running = false
 	}()
-}
 
-// Stop stops the updater server
-func (s *Server) Stop() {
-	if s.srv != nil {
-		s.srv.Close()
+	log.Printf("[Updater-Standalone] 独立更新服务已启动 → http://0.0.0.0:%d/updater", UpdaterPort)
+	if err := s.srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Printf("[Updater-Standalone] 服务启动失败: %v", err)
 	}
-}
-
-// IsRunning returns whether the updater server is running
-func (s *Server) IsRunning() bool {
-	return s.running
+	log.Println("[Updater-Standalone] 服务已退出")
 }
 
 // --- HTTP Handlers ---
@@ -353,6 +449,8 @@ func (s *Server) handleProgress(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "OPTIONS" {
 		return
 	}
+	// Progress endpoint does NOT require token — the update page needs to keep
+	// polling even after the token expires during a long update.
 	s.mu.Lock()
 	state := s.state
 	logCopy := make([]string, len(s.state.Log))
@@ -685,16 +783,18 @@ func (s *Server) stopPanel() error {
 	if runtime.GOOS == "windows" {
 		exec.Command("net", "stop", "ClawPanel").Run()
 		time.Sleep(2 * time.Second)
+		// Only kill non-updater clawpanel processes
 		exec.Command("taskkill", "/F", "/IM", "clawpanel.exe").Run()
 	} else {
+		// Only use systemctl stop — do NOT pkill, as that would kill the updater child process
 		exec.Command("systemctl", "stop", "clawpanel").Run()
-		time.Sleep(2 * time.Second)
-		// Kill if still running
+		time.Sleep(3 * time.Second)
+		// If systemd service is still active, wait a bit more
 		for i := 0; i < 5; i++ {
-			if !s.isPanelRunning() {
+			out, _ := exec.Command("systemctl", "is-active", "clawpanel").Output()
+			if strings.TrimSpace(string(out)) != "active" {
 				break
 			}
-			exec.Command("pkill", "-f", "clawpanel").Run()
 			time.Sleep(1 * time.Second)
 		}
 	}
@@ -726,8 +826,9 @@ func (s *Server) isPanelRunning() bool {
 		out, _ := exec.Command("tasklist", "/FI", "IMAGENAME eq clawpanel.exe", "/NH").Output()
 		return strings.Contains(string(out), "clawpanel")
 	}
-	out, _ := exec.Command("pgrep", "-x", "clawpanel").Output()
-	return len(strings.TrimSpace(string(out))) > 0
+	// Use systemctl is-active instead of pgrep (pgrep would match the updater child too)
+	out, _ := exec.Command("systemctl", "is-active", "clawpanel").Output()
+	return strings.TrimSpace(string(out)) == "active"
 }
 
 func (s *Server) fetchLatestVersion() (*VersionInfo, string, error) {

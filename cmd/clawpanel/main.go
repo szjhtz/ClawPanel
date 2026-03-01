@@ -35,6 +35,23 @@ var frontendFS embed.FS
 var faqMD []byte
 
 func main() {
+	// 独立更新子进程模式：仅运行更新服务HTTP服务器
+	// 由主进程 fork 出来，主进程被 systemctl stop 杀死后子进程继续存活
+	if len(os.Args) >= 5 && os.Args[1] == "--updater-standalone" {
+		version := os.Args[2]   // e.g. "v5.0.9"
+		dataDir := os.Args[3]   // e.g. "/home/xxx/ClawPanel/data"
+		panelPort := os.Args[4] // e.g. "19527"
+		port := 0
+		fmt.Sscanf(panelPort, "%d", &port)
+		if port == 0 {
+			port = 19527
+		}
+		log.Printf("[Updater-Standalone] 独立更新子进程启动: version=%s dataDir=%s panelPort=%d", version, dataDir, port)
+		srv := updater.NewServer(version, dataDir, port)
+		srv.RunStandalone()
+		return
+	}
+
 	// Check if running as a Windows service
 	if runAsService() {
 		return
