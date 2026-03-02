@@ -23,9 +23,24 @@ echo -e "${BOLD}║   ClawPanel QQ NapCat 插件诊断与修复工具    ║${NC
 echo -e "${BOLD}╚══════════════════════════════════════════════╝${NC}"
 echo ""
 
-OPENCLAW_DIR="${OPENCLAW_DIR:-$HOME/openclaw/config}"
+# sudo 下 $HOME 可能是 /root，需额外扫描实际用户目录
+ACTUAL_HOME="${SUDO_USER:+$(getent passwd $SUDO_USER | cut -d: -f6)}"
+ACTUAL_HOME="${ACTUAL_HOME:-$HOME}"
+OPENCLAW_DIR="${OPENCLAW_DIR:-$ACTUAL_HOME/openclaw/config}"
 OPENCLAW_JSON="$OPENCLAW_DIR/openclaw.json"
 QQ_EXT_DIR=""
+
+# 将 nvm 常见路径加入 PATH，防止 sudo 丢失
+for _nvm_node_bin in \
+    "$ACTUAL_HOME/.nvm/versions/node/"*/bin \
+    /root/.nvm/versions/node/*/bin \
+    /usr/local/bin /usr/bin; do
+    [ -d "$_nvm_node_bin" ] || continue
+    case ":$PATH:" in
+        *":$_nvm_node_bin:"*) ;;
+        *) export PATH="$_nvm_node_bin:$PATH" ;;
+    esac
+done
 
 # ── 1. 检测 Node.js ──────────────────────────────────────────
 title "1. 检测 Node.js"
@@ -54,25 +69,31 @@ fi
 
 # ── 2. 检测 openclaw CLI ──────────────────────────────────────
 title "2. 检测 OpenClaw"
-if command -v openclaw &>/dev/null; then
-    OC_VER=$(openclaw --version 2>/dev/null || echo "unknown")
-    ok "openclaw $OC_VER"
+OC_BIN=$(command -v openclaw 2>/dev/null)
+if [ -z "$OC_BIN" ]; then
+    # nvm 安装的 openclaw 在 nvm node bin 目录中，尝试直接定位
+    OC_BIN=$(find "$ACTUAL_HOME/.nvm" /root/.nvm -name openclaw -type f 2>/dev/null | head -1)
+fi
+if [ -n "$OC_BIN" ]; then
+    OC_VER=$($OC_BIN --version 2>/dev/null || echo "unknown")
+    ok "openclaw $OC_VER ($OC_BIN)"
 else
     err "openclaw 命令未找到"
     info "正在安装 OpenClaw..."
     npm install -g openclaw@latest --registry=https://registry.npmmirror.com
-    ok "openclaw 已安装: $(openclaw --version 2>/dev/null)"
+    OC_BIN=$(command -v openclaw 2>/dev/null || find "$ACTUAL_HOME/.nvm" /root/.nvm -name openclaw -type f 2>/dev/null | head -1)
+    ok "openclaw 已安装: $($OC_BIN --version 2>/dev/null)"
 fi
 
 # ── 3. 定位 OpenClaw 配置目录 ────────────────────────────────
 title "3. 定位 OpenClaw 配置"
 if [ ! -f "$OPENCLAW_JSON" ]; then
-    # 尝试常见路径
+    # 扫描所有可能路径（包括 /home/* 下的所有用户）
     for candidate in \
-        "$HOME/openclaw/config/openclaw.json" \
+        "$ACTUAL_HOME/openclaw/config/openclaw.json" \
         "/root/openclaw/config/openclaw.json" \
-        "$HOME/.openclaw/openclaw.json" \
-        "$(openclaw config path 2>/dev/null)/openclaw.json"; do
+        "$ACTUAL_HOME/.openclaw/openclaw.json" \
+        $(find /home -maxdepth 3 -name openclaw.json 2>/dev/null | head -5); do
         if [ -f "$candidate" ]; then
             OPENCLAW_JSON="$candidate"
             OPENCLAW_DIR="$(dirname "$candidate")"
@@ -83,22 +104,40 @@ fi
 if [ -f "$OPENCLAW_JSON" ]; then
     ok "openclaw.json: $OPENCLAW_JSON"
 else
-    err "openclaw.json 未找到，尝试初始化..."
-    openclaw init 2>/dev/null || true
-    OPENCLAW_JSON="$HOME/openclaw/config/openclaw.json"
-    OPENCLAW_DIR="$HOME/openclaw/config"
-    if [ ! -f "$OPENCLAW_JSON" ]; then
-        err "初始化失败，请手动运行 'openclaw init'"
+    warn "openclaw.json 未找到，尝试初始化..."
+    [ -n "$OC_BIN" ] && "$OC_BIN" init 2>/dev/null || true
+    # 初始化后再次扫描
+    for candidate in \
+        "$ACTUAL_HOME/openclaw/config/openclaw.json" \
+        "/root/openclaw/config/openclaw.json" \
+        $(find /home -maxdepth 3 -name openclaw.json 2>/dev/null | head -5); do
+        if [ -f "$candidate" ]; then
+            OPENCLAW_JSON="$candidate"
+            OPENCLAW_DIR="$(dirname "$candidate")"
+            break
+        fi
+    done
+    if [ -f "$OPENCLAW_JSON" ]; then
+        ok "openclaw.json 已初始化: $OPENCLAW_JSON"
+    else
+        err "初始化失败，请手动运行 'openclaw init' 然后重试"
         exit 1
     fi
-    ok "openclaw.json 已初始化: $OPENCLAW_JSON"
 fi
 
 # ── 4. 检测 QQ 插件目录 ──────────────────────────────────────
 title "4. 检测 QQ 扩展插件"
 # openclaw 扩展目录 = openclaw 全局安装目录/extensions/qq
-OPENCLAW_GLOBAL=$(npm root -g 2>/dev/null)/openclaw
-QQ_EXT_DIR="$OPENCLAW_GLOBAL/extensions/qq"
+OPENCLAW_GLOBAL=$(npm root -g 2>/dev/null)
+# nvm 安装时 openclaw 在 nvm node 目录下， npm root -g 可能对不上
+if [ -n "$OC_BIN" ]; then
+    OC_INSTALL_DIR=$(dirname "$(dirname "$OC_BIN")")/lib/node_modules/openclaw
+    if [ -d "$OC_INSTALL_DIR" ]; then
+        OPENCLAW_GLOBAL=$(dirname "$OC_INSTALL_DIR")
+    fi
+fi
+QQ_EXT_DIR="$OPENCLAW_GLOBAL/openclaw/extensions/qq"
+[ -d "$OPENCLAW_GLOBAL/extensions/qq" ] && QQ_EXT_DIR="$OPENCLAW_GLOBAL/extensions/qq"
 
 if [ -d "$QQ_EXT_DIR" ]; then
     ok "QQ 扩展目录: $QQ_EXT_DIR"

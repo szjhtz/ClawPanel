@@ -19,9 +19,20 @@ Write-Host "  ║   ClawPanel QQ NapCat 插件诊断与修复工具    ║" -For
 Write-Host "  ╚══════════════════════════════════════════════╝" -ForegroundColor Cyan
 Write-Host ""
 
-# 刷新 PATH
+# 刷新 PATH（管理员会话可能丢失用户 PATH）
 $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH","User")
 $home2 = [System.Environment]::GetFolderPath("UserProfile")
+
+# 将 nvm-windows 所有 node 版本的 bin 目录加入 PATH
+$nvmRoot = [System.Environment]::GetEnvironmentVariable("NVM_HOME", "User")
+if (-not $nvmRoot) { $nvmRoot = [System.Environment]::GetEnvironmentVariable("NVM_HOME", "Machine") }
+if (-not $nvmRoot) { $nvmRoot = Join-Path $home2 "AppData\Roaming\nvm" }
+if (Test-Path $nvmRoot) {
+    Get-ChildItem $nvmRoot -Directory | ForEach-Object {
+        $binPath = Join-Path $_.FullName ""
+        if ($env:PATH -notlike "*$binPath*") { $env:PATH = "$binPath;$env:PATH" }
+    }
+}
 
 # ── 1. 检测 Node.js ──────────────────────────────────────────
 Title "1. 检测 Node.js"
@@ -51,25 +62,41 @@ if ($nodeCmd) {
 
 # ── 2. 检测 openclaw CLI ──────────────────────────────────────
 Title "2. 检测 OpenClaw"
+$ocExe = $null
+
+# 1) 先尝试 PATH 中直接找
 $ocCmd = Get-Command openclaw -ErrorAction SilentlyContinue
-if (-not $ocCmd) {
-    # 检查 npm 全局目录
-    $npmPrefix = npm config get prefix 2>$null
-    $ocPath = Join-Path $npmPrefix "openclaw.cmd"
-    if (Test-Path $ocPath) {
-        $ocCmd = $ocPath
+if ($ocCmd) { $ocExe = $ocCmd.Source }
+
+# 2) 从 npm prefix 目录查找（nvm 每个版本有独立 prefix）
+if (-not $ocExe) {
+    try {
+        $npmPrefix = (npm config get prefix 2>$null).Trim()
+        $candidate = Join-Path $npmPrefix "openclaw.cmd"
+        if (Test-Path $candidate) { $ocExe = $candidate }
+    } catch {}
+}
+
+# 3) 扫描 nvm 目录下所有 node 版本的全局 bin
+if (-not $ocExe -and (Test-Path $nvmRoot)) {
+    Get-ChildItem $nvmRoot -Directory | ForEach-Object {
+        $candidate = Join-Path $_.FullName "openclaw.cmd"
+        if ((Test-Path $candidate) -and (-not $ocExe)) { $ocExe = $candidate }
     }
 }
-if ($ocCmd) {
-    $ocVer = & openclaw --version 2>$null
-    Ok "openclaw $ocVer"
+
+if ($ocExe) {
+    $ocVer = & $ocExe --version 2>$null
+    Ok "openclaw $ocVer ($ocExe)"
 } else {
     Warn "openclaw 未找到，正在安装..."
     npm install -g openclaw@latest --registry=https://registry.npmmirror.com 2>&1
+    # 刷新 PATH 后再查
     $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH","User")
-    $ocVer = & openclaw --version 2>$null
-    if ($ocVer) {
-        Ok "openclaw $ocVer 已安装"
+    $ocCmd2 = Get-Command openclaw -ErrorAction SilentlyContinue
+    if ($ocCmd2) {
+        $ocExe = $ocCmd2.Source
+        Ok "openclaw $(& $ocExe --version 2>$null) 已安装"
     } else {
         Err "openclaw 安装失败，请手动运行: npm install -g openclaw@latest"
     }
