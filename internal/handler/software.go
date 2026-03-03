@@ -188,28 +188,36 @@ func boolStatus(installed bool) string {
 }
 
 func detectOpenClawVersion(cfg *config.Config) string {
-	// 1. Try openclaw CLI (covers npm global, manual install, any PATH-accessible install)
+	// 1. Try npm global package.json FIRST (works even when running as SYSTEM service)
+	npmRoot := detectCmd("npm", "root", "-g")
+	if npmRoot != "" {
+		pkgPath := filepath.Join(npmRoot, "openclaw", "package.json")
+		if v := readVersionFromPackageJSON(pkgPath); v != "" {
+			return v
+		}
+	}
+	
+	// 2. Try reading from cfg.OpenClawApp if it points to npm global openclaw
+	if cfg.OpenClawApp != "" && strings.Contains(cfg.OpenClawApp, "node_modules") {
+		pkgPath := filepath.Join(cfg.OpenClawApp, "package.json")
+		if v := readVersionFromPackageJSON(pkgPath); v != "" {
+			return v
+		}
+	}
+
+	// 3. Try openclaw CLI (may not work when running as SYSTEM service)
 	ver := detectCmd("openclaw", "--version")
 	if ver != "" {
 		return strings.TrimPrefix(strings.TrimSpace(ver), "v")
 	}
 
-	// 2. Try from config meta.lastTouchedVersion
+	// 4. Try from config meta.lastTouchedVersion
 	ocConfig, _ := cfg.ReadOpenClawJSON()
 	if ocConfig != nil {
 		if meta, ok := ocConfig["meta"].(map[string]interface{}); ok {
 			if v, ok := meta["lastTouchedVersion"].(string); ok && v != "" {
 				return v
 			}
-		}
-	}
-
-	// 3. Try npm global: read package.json from npm root
-	npmRoot := detectCmd("npm", "root", "-g")
-	if npmRoot != "" {
-		pkgPath := filepath.Join(npmRoot, "openclaw", "package.json")
-		if v := readVersionFromPackageJSON(pkgPath); v != "" {
-			return v
 		}
 	}
 
