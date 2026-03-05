@@ -213,8 +213,84 @@ export default function SystemConfig() {
       const clone = JSON.parse(JSON.stringify(prev));
       const keys = path.split('.');
       let cur = clone;
-      for (let i = 0; i < keys.length - 1; i++) { if (!cur[keys[i]]) cur[keys[i]] = {}; cur = cur[keys[i]]; }
+      for (let i = 0; i < keys.length - 1; i++) {
+        if (!cur[keys[i]] || typeof cur[keys[i]] !== 'object' || Array.isArray(cur[keys[i]])) cur[keys[i]] = {};
+        cur = cur[keys[i]];
+      }
       cur[keys[keys.length - 1]] = value;
+      return clone;
+    });
+  };
+
+  const normalizeConfigForSave = (input: any) => {
+    const clone = cloneConfig(input || {});
+    const defaults = clone?.agents?.defaults;
+    if (defaults && typeof defaults === 'object') {
+      const model = defaults.model;
+      if (typeof model === 'string') {
+        const primary = model.trim();
+        if (primary) defaults.model = { primary };
+        else delete defaults.model;
+      } else if (model && typeof model === 'object' && !Array.isArray(model)) {
+        if (defaults.contextTokens == null && model.contextTokens != null) {
+          const n = Number(model.contextTokens);
+          if (Number.isFinite(n) && n > 0) defaults.contextTokens = n;
+        }
+        const cleaned: any = {};
+        if (typeof model.primary === 'string' && model.primary.trim()) cleaned.primary = model.primary.trim();
+        if (Array.isArray(model.fallbacks)) {
+          const fb = model.fallbacks.filter((x: any) => typeof x === 'string' && x.trim()).map((x: string) => x.trim());
+          if (fb.length > 0) cleaned.fallbacks = fb;
+        }
+        if (Object.keys(cleaned).length > 0) defaults.model = cleaned;
+        else delete defaults.model;
+      }
+      const compactionMode = defaults?.compaction?.mode;
+      if (compactionMode === 'aggressive') defaults.compaction.mode = 'safeguard';
+      if (compactionMode === 'off') defaults.compaction.mode = 'default';
+    }
+
+    const gateway = clone?.gateway;
+    if (gateway && typeof gateway === 'object') {
+      if (gateway.mode === 'hosted') gateway.mode = 'remote';
+      if ((!gateway.customBindHost || !String(gateway.customBindHost).trim()) && gateway.bindAddress) {
+        gateway.customBindHost = String(gateway.bindAddress).trim();
+      }
+      if ('bindAddress' in gateway) delete gateway.bindAddress;
+    }
+
+    const hooks = clone?.hooks;
+    if (hooks && typeof hooks === 'object') {
+      if ((!hooks.path || !String(hooks.path).trim()) && hooks.basePath) hooks.path = String(hooks.basePath).trim();
+      if ((!hooks.token || !String(hooks.token).trim()) && hooks.secret) hooks.token = hooks.secret;
+      if ('basePath' in hooks) delete hooks.basePath;
+      if ('secret' in hooks) delete hooks.secret;
+    }
+
+    const messages = clone?.messages;
+    if (messages && typeof messages === 'object') {
+      if ('systemPrompt' in messages) delete messages.systemPrompt;
+      if ('maxHistoryMessages' in messages) delete messages.maxHistoryMessages;
+    }
+
+    return clone;
+  };
+
+  const setPrimaryModel = (value: string) => {
+    setConfig((prev: any) => {
+      const clone = cloneConfig(prev || {});
+      if (!clone.agents || typeof clone.agents !== 'object') clone.agents = {};
+      if (!clone.agents.defaults || typeof clone.agents.defaults !== 'object') clone.agents.defaults = {};
+      const defaults = clone.agents.defaults;
+      const currentModel = defaults.model;
+      const nextModel =
+        currentModel && typeof currentModel === 'object' && !Array.isArray(currentModel)
+          ? { ...currentModel }
+          : {};
+      if (value) nextModel.primary = value;
+      else delete nextModel.primary;
+      if (Object.keys(nextModel).length > 0) defaults.model = nextModel;
+      else delete defaults.model;
       return clone;
     });
   };
@@ -222,9 +298,11 @@ export default function SystemConfig() {
   const doSave = async () => {
     setSaving(true); setMsg('');
     try {
-      await api.updateOpenClawConfig(config);
+      const normalized = normalizeConfigForSave(config);
+      await api.updateOpenClawConfig(normalized);
+      setConfig(normalized);
       setMsg(i18n.sysConfig.saveSuccess);
-      setOriginConfig(cloneConfig(config));
+      setOriginConfig(cloneConfig(normalized));
       setShowDiffPreview(false);
       // If on models tab, prompt to restart gateway
       if (tab === 'models') {
@@ -274,7 +352,8 @@ export default function SystemConfig() {
   if (loading) return <div className="text-center py-12 text-gray-400 text-xs">{i18n.common.loading}</div>;
 
   const providers = config?.models?.providers || {};
-  const primaryModel = config?.agents?.defaults?.model?.primary || '';
+  const primaryModelRaw = config?.agents?.defaults?.model;
+  const primaryModel = typeof primaryModelRaw === 'string' ? primaryModelRaw : (primaryModelRaw?.primary || '');
 
   return (
     <div className="space-y-6">
@@ -355,7 +434,7 @@ export default function SystemConfig() {
               <Brain size={16} className="text-violet-500" /> {i18n.sysConfig.primaryModel}
             </h3>
             <div className="relative">
-              <select value={primaryModel} onChange={e => setVal('agents.defaults.model.primary', e.target.value)}
+              <select value={primaryModel} onChange={e => setPrimaryModel(e.target.value)}
                 className="w-full pl-4 pr-10 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 transition-all font-mono appearance-none cursor-pointer">
                 <option value="">选择主模型...</option>
                 {Object.entries(providers).map(([pid, prov]: [string, any]) => {
@@ -442,8 +521,14 @@ export default function SystemConfig() {
                           const clone = JSON.parse(JSON.stringify(config));
                           clone.models.providers[newId] = clone.models.providers[pid];
                           delete clone.models.providers[pid];
-                          const primary = clone.agents?.defaults?.model?.primary || '';
+                          const modelCfg = clone.agents?.defaults?.model;
+                          const primary = typeof modelCfg === 'string' ? modelCfg : (modelCfg?.primary || '');
                           if (primary.startsWith(pid + '/')) {
+                            if (!clone.agents) clone.agents = {};
+                            if (!clone.agents.defaults || typeof clone.agents.defaults !== 'object') clone.agents.defaults = {};
+                            if (!clone.agents.defaults.model || typeof clone.agents.defaults.model !== 'object' || Array.isArray(clone.agents.defaults.model)) {
+                              clone.agents.defaults.model = {};
+                            }
                             clone.agents.defaults.model.primary = newId + primary.slice(pid.length);
                           }
                           setConfig(clone);
@@ -662,18 +747,17 @@ export default function SystemConfig() {
               ]} getVal={getVal} setVal={setVal} />
               
               <CfgSection title="消息配置" icon={MessageSquare} fields={[
-                { path: 'messages.systemPrompt', label: '系统提示词', type: 'textarea' as const, placeholder: '你是一个有帮助的AI助手...' },
-                { path: 'messages.maxHistoryMessages', label: '最大历史消息数', type: 'number' as const, placeholder: '50' },
-                { path: 'messages.ackReactionScope', label: '确认反应范围', type: 'select' as const, options: ['all', 'group-mentions', 'none'] },
+                { path: 'messages.responsePrefix', label: '回复前缀', type: 'text' as const, placeholder: '[OpenClaw]' },
+                { path: 'session.maintenance.maxEntries', label: '会话条目上限', type: 'number' as const, placeholder: '2000' },
+                { path: 'messages.ackReactionScope', label: '确认反应范围', type: 'select' as const, options: ['all', 'group-mentions', 'group-all', 'direct', 'off', 'none'] },
               ]} getVal={getVal} setVal={setVal} />
             </div>
             
             <div className="space-y-6">
               <CfgSection title="Agent 默认设置" icon={Brain} fields={[
-                { path: 'agents.defaults.model.contextTokens', label: '上下文Token数', type: 'number' as const, placeholder: '200000' },
-                { path: 'agents.defaults.model.maxTokens', label: '最大输出Token', type: 'number' as const, placeholder: '8192' },
+                { path: 'agents.defaults.contextTokens', label: '上下文Token数', type: 'number' as const, placeholder: '200000' },
                 { path: 'agents.defaults.maxConcurrent', label: '最大并发', type: 'number' as const, placeholder: '4' },
-                { path: 'agents.defaults.compaction.mode', label: '压缩模式', type: 'select' as const, options: ['default', 'aggressive', 'off'] },
+                { path: 'agents.defaults.compaction.mode', label: '压缩模式', type: 'select' as const, options: ['default', 'safeguard'] },
                 { path: 'agents.defaults.compaction.maxHistoryShare', label: '历史占比上限', type: 'number' as const, placeholder: '0.5' },
               ]} getVal={getVal} setVal={setVal} />
             </div>
@@ -755,9 +839,9 @@ export default function SystemConfig() {
         <div className="space-y-3">
           <CfgSection title="网关配置" icon={Globe} fields={[
             { path: 'gateway.port', label: '端口', type: 'number' as const, placeholder: '18789' },
-            { path: 'gateway.mode', label: '模式', type: 'select' as const, options: ['local', 'hosted'] },
+            { path: 'gateway.mode', label: '模式', type: 'select' as const, options: ['local', 'remote'] },
             { path: 'gateway.bind', label: '绑定', type: 'select' as const, options: ['auto', 'loopback', 'lan', 'tailnet', 'custom'] },
-            { path: 'gateway.bindAddress', label: '自定义绑定地址', type: 'text' as const, placeholder: '0.0.0.0 / 127.0.0.1 / ::1' },
+            { path: 'gateway.customBindHost', label: '自定义绑定地址', type: 'text' as const, placeholder: '0.0.0.0 / 127.0.0.1 / ::1' },
             { path: 'gateway.auth.mode', label: '认证模式', type: 'select' as const, options: ['none', 'token', 'password', 'trusted-proxy'] },
             { path: 'gateway.auth.token', label: '认证Token', type: 'password' as const },
           ]} getVal={getVal} setVal={setVal} />
@@ -789,8 +873,8 @@ export default function SystemConfig() {
           </div>
           <CfgSection title="Hooks" icon={Webhook} fields={[
             { path: 'hooks.enabled', label: '启用Hooks', type: 'toggle' as const },
-            { path: 'hooks.basePath', label: '基础路径', type: 'text' as const, placeholder: '/hooks' },
-            { path: 'hooks.secret', label: 'Webhook密钥', type: 'password' as const },
+            { path: 'hooks.path', label: '基础路径', type: 'text' as const, placeholder: '/hooks' },
+            { path: 'hooks.token', label: 'Webhook密钥', type: 'password' as const },
           ]} getVal={getVal} setVal={setVal} />
           <CfgSection title="命令配置" icon={Terminal} fields={[
             { path: 'commands.native', label: '原生命令', type: 'select' as const, options: ['auto', 'on', 'off'] },

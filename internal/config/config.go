@@ -301,6 +301,8 @@ func (c *Config) WriteOpenClawJSON(data map[string]interface{}) error {
 	if err := backupOpenClawBeforeWrite(cfgPath, filepath.Join(c.OpenClawDir, "backups")); err != nil {
 		return err
 	}
+	// 兼容清洗：避免写入新版 OpenClaw 不接受的 legacy 字段。
+	NormalizeOpenClawConfig(data)
 	jsonData, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return err

@@ -80,3 +80,126 @@ func TestReadOpenClawJSONSupportsJSON5AndWriteCreatesBackup(t *testing.T) {
 		t.Fatalf("written config should preserve session")
 	}
 }
+
+func TestWriteOpenClawJSONNormalizesLegacyAgentModelFields(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	cfg := &Config{OpenClawDir: dir}
+
+	input := map[string]interface{}{
+		"agents": map[string]interface{}{
+			"defaults": map[string]interface{}{
+				"model": map[string]interface{}{
+					"primary":       "cpa/gemini-3.1-pro-preview",
+					"contextTokens": 200000,
+					"maxTokens":     8192,
+				},
+			},
+		},
+	}
+
+	if err := cfg.WriteOpenClawJSON(input); err != nil {
+		t.Fatalf("WriteOpenClawJSON failed: %v", err)
+	}
+
+	saved, err := cfg.ReadOpenClawJSON()
+	if err != nil {
+		t.Fatalf("ReadOpenClawJSON failed: %v", err)
+	}
+
+	agents, _ := saved["agents"].(map[string]interface{})
+	defaults, _ := agents["defaults"].(map[string]interface{})
+	if defaults == nil {
+		t.Fatalf("agents.defaults should exist")
+	}
+	if _, ok := defaults["contextTokens"]; !ok {
+		t.Fatalf("legacy contextTokens should be migrated to agents.defaults.contextTokens")
+	}
+
+	model, _ := defaults["model"].(map[string]interface{})
+	if model == nil {
+		t.Fatalf("agents.defaults.model should still exist")
+	}
+	if _, ok := model["contextTokens"]; ok {
+		t.Fatalf("agents.defaults.model.contextTokens should be removed")
+	}
+	if _, ok := model["maxTokens"]; ok {
+		t.Fatalf("agents.defaults.model.maxTokens should be removed")
+	}
+}
+
+func TestWriteOpenClawJSONNormalizesLegacyPanelFields(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	cfg := &Config{OpenClawDir: dir}
+
+	input := map[string]interface{}{
+		"gateway": map[string]interface{}{
+			"mode":        "hosted",
+			"bindAddress": "0.0.0.0",
+		},
+		"hooks": map[string]interface{}{
+			"enabled":  true,
+			"basePath": "/hooks",
+			"secret":   "test-token",
+		},
+		"messages": map[string]interface{}{
+			"systemPrompt":       "legacy",
+			"maxHistoryMessages": 50,
+			"ackReactionScope":   "group-mentions",
+		},
+	}
+
+	if err := cfg.WriteOpenClawJSON(input); err != nil {
+		t.Fatalf("WriteOpenClawJSON failed: %v", err)
+	}
+
+	saved, err := cfg.ReadOpenClawJSON()
+	if err != nil {
+		t.Fatalf("ReadOpenClawJSON failed: %v", err)
+	}
+
+	gateway, _ := saved["gateway"].(map[string]interface{})
+	if gateway == nil {
+		t.Fatalf("gateway should exist")
+	}
+	if got, _ := gateway["mode"].(string); got != "remote" {
+		t.Fatalf("gateway.mode should normalize to remote, got %q", got)
+	}
+	if got, _ := gateway["customBindHost"].(string); got != "0.0.0.0" {
+		t.Fatalf("gateway.customBindHost should be migrated, got %q", got)
+	}
+	if _, ok := gateway["bindAddress"]; ok {
+		t.Fatalf("gateway.bindAddress should be removed")
+	}
+
+	hooks, _ := saved["hooks"].(map[string]interface{})
+	if hooks == nil {
+		t.Fatalf("hooks should exist")
+	}
+	if got, _ := hooks["path"].(string); got != "/hooks" {
+		t.Fatalf("hooks.path should be migrated, got %q", got)
+	}
+	if got, _ := hooks["token"].(string); got != "test-token" {
+		t.Fatalf("hooks.token should be migrated, got %q", got)
+	}
+	if _, ok := hooks["basePath"]; ok {
+		t.Fatalf("hooks.basePath should be removed")
+	}
+	if _, ok := hooks["secret"]; ok {
+		t.Fatalf("hooks.secret should be removed")
+	}
+
+	messages, _ := saved["messages"].(map[string]interface{})
+	if messages == nil {
+		t.Fatalf("messages should exist")
+	}
+	if _, ok := messages["systemPrompt"]; ok {
+		t.Fatalf("messages.systemPrompt should be removed")
+	}
+	if _, ok := messages["maxHistoryMessages"]; ok {
+		t.Fatalf("messages.maxHistoryMessages should be removed")
+	}
+}
