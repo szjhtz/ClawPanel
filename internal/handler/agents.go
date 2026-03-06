@@ -21,10 +21,11 @@ func GetOpenClawAgents(cfg *config.Config) gin.HandlerFunc {
 			c.JSON(http.StatusOK, gin.H{
 				"ok": true,
 				"agents": gin.H{
-					"default":  "main",
-					"defaults": gin.H{},
+					"default":           "main",
+					"defaultConfigured": true,
+					"defaults":          gin.H{},
 					"list": []gin.H{
-						{"id": "main", "default": true},
+						{"id": "main", "default": true, "implicit": false},
 					},
 					"bindings": []interface{}{},
 				},
@@ -38,15 +39,31 @@ func GetOpenClawAgents(cfg *config.Config) gin.HandlerFunc {
 		}
 		agentsCfg := ensureAgentsConfig(ocConfig)
 		list := parseAgentsListFromConfig(ocConfig)
+		hasExplicitList := len(list) > 0
+		defaultConfigured := strings.TrimSpace(toString(agentsCfg["default"])) != ""
 		defaultID := getDefaultAgentID(ocConfig, list)
 		if defaultID == "" {
 			defaultID = "main"
 		}
 
-		if len(list) == 0 {
-			ids, _ := collectAgentIDsFromConfigAndDisk(cfg, ocConfig)
+		if !hasExplicitList {
+			ids, agentSet := collectAgentIDsFromConfigAndDisk(cfg, ocConfig)
+			if defaultID != "" {
+				if _, ok := agentSet[defaultID]; !ok {
+					ids = append(ids, defaultID)
+					sort.Slice(ids, func(i, j int) bool {
+						if ids[i] == "main" {
+							return true
+						}
+						if ids[j] == "main" {
+							return false
+						}
+						return ids[i] < ids[j]
+					})
+				}
+			}
 			for _, id := range ids {
-				list = append(list, map[string]interface{}{"id": id})
+				list = append(list, map[string]interface{}{"id": id, "implicit": true})
 			}
 		}
 
@@ -59,6 +76,7 @@ func GetOpenClawAgents(cfg *config.Config) gin.HandlerFunc {
 			}
 			cur["id"] = id
 			cur["default"] = id == defaultID
+			cur["implicit"] = asBool(cur["implicit"])
 			sessions, lastActive := getAgentSessionStats(cfg, id)
 			cur["sessions"] = sessions
 			cur["lastActive"] = lastActive
@@ -69,10 +87,11 @@ func GetOpenClawAgents(cfg *config.Config) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{
 			"ok": true,
 			"agents": gin.H{
-				"default":  defaultID,
-				"defaults": readMap(agentsCfg["defaults"]),
-				"list":     enriched,
-				"bindings": bindings,
+				"default":           defaultID,
+				"defaultConfigured": defaultConfigured,
+				"defaults":          readMap(agentsCfg["defaults"]),
+				"list":              enriched,
+				"bindings":          bindings,
 			},
 		})
 	}

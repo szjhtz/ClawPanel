@@ -87,6 +87,160 @@ func TestGetSessionsAgentAllAggregates(t *testing.T) {
 	}
 }
 
+func TestGetOpenClawAgentsMarksImplicitMainPlaceholder(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	dir := t.TempDir()
+	cfg := &config.Config{OpenClawDir: dir}
+	writeJSON(t, filepath.Join(dir, "openclaw.json"), map[string]interface{}{
+		"agents": map[string]interface{}{
+			"default": "main",
+		},
+	})
+
+	r := gin.New()
+	r.GET("/openclaw/agents", GetOpenClawAgents(cfg))
+	req := httptest.NewRequest(http.MethodGet, "/openclaw/agents", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		OK     bool `json:"ok"`
+		Agents struct {
+			List []map[string]interface{} `json:"list"`
+		} `json:"agents"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !resp.OK {
+		t.Fatalf("expected ok=true")
+	}
+	if len(resp.Agents.List) != 1 {
+		t.Fatalf("expected one synthesized agent, got %d", len(resp.Agents.List))
+	}
+	if got := resp.Agents.List[0]["id"]; got != "main" {
+		t.Fatalf("expected synthesized main, got %#v", got)
+	}
+	if got := resp.Agents.List[0]["implicit"]; got != true {
+		t.Fatalf("expected synthesized main to be implicit=true, got %#v", got)
+	}
+}
+
+func TestGetOpenClawAgentsKeepsExplicitMainNonImplicit(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	dir := t.TempDir()
+	cfg := &config.Config{OpenClawDir: dir}
+	writeJSON(t, filepath.Join(dir, "openclaw.json"), map[string]interface{}{
+		"agents": map[string]interface{}{
+			"default": "main",
+			"list": []interface{}{
+				map[string]interface{}{"id": "main"},
+			},
+		},
+	})
+
+	r := gin.New()
+	r.GET("/openclaw/agents", GetOpenClawAgents(cfg))
+	req := httptest.NewRequest(http.MethodGet, "/openclaw/agents", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		OK     bool `json:"ok"`
+		Agents struct {
+			List []map[string]interface{} `json:"list"`
+		} `json:"agents"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !resp.OK {
+		t.Fatalf("expected ok=true")
+	}
+	if len(resp.Agents.List) != 1 {
+		t.Fatalf("expected one explicit agent, got %d", len(resp.Agents.List))
+	}
+	if got := resp.Agents.List[0]["id"]; got != "main" {
+		t.Fatalf("expected explicit main, got %#v", got)
+	}
+	if got := resp.Agents.List[0]["implicit"]; got != false {
+		t.Fatalf("expected explicit main to be implicit=false, got %#v", got)
+	}
+}
+
+func TestGetOpenClawAgentsMarksSynthesizedDiskAgentsImplicit(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	dir := t.TempDir()
+	cfg := &config.Config{OpenClawDir: dir}
+	writeJSON(t, filepath.Join(dir, "openclaw.json"), map[string]interface{}{
+		"agents": map[string]interface{}{
+			"default": "main",
+		},
+	})
+	if err := os.MkdirAll(filepath.Join(dir, "agents", "work"), 0755); err != nil {
+		t.Fatalf("mkdir work agent dir: %v", err)
+	}
+
+	r := gin.New()
+	r.GET("/openclaw/agents", GetOpenClawAgents(cfg))
+	req := httptest.NewRequest(http.MethodGet, "/openclaw/agents", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		OK     bool `json:"ok"`
+		Agents struct {
+			List []map[string]interface{} `json:"list"`
+		} `json:"agents"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !resp.OK {
+		t.Fatalf("expected ok=true")
+	}
+	if len(resp.Agents.List) != 2 {
+		t.Fatalf("expected synthesized main and disk work agent, got %d entries", len(resp.Agents.List))
+	}
+
+	var mainAgent, workAgent map[string]interface{}
+	for _, item := range resp.Agents.List {
+		switch item["id"] {
+		case "main":
+			mainAgent = item
+		case "work":
+			workAgent = item
+		}
+	}
+	if mainAgent == nil || workAgent == nil {
+		t.Fatalf("expected main and work agents, got %#v", resp.Agents.List)
+	}
+	if got := mainAgent["implicit"]; got != true {
+		t.Fatalf("expected synthesized main to be implicit=true, got %#v", got)
+	}
+	if got := workAgent["implicit"]; got != true {
+		t.Fatalf("expected synthesized disk work agent to be implicit=true, got %#v", got)
+	}
+}
+
 func TestPreviewRouteRespectsBindingOrder(t *testing.T) {
 	t.Parallel()
 	gin.SetMode(gin.TestMode)
