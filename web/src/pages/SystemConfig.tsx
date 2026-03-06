@@ -23,8 +23,8 @@ const KNOWN_PROVIDERS: { id: string; name: string; nameZh?: string; baseUrl: str
   { id: 'spark', name: 'Spark', nameZh: '星火（讯飞）', baseUrl: 'https://spark-api-open.xf-yun.com/v1', apiKeyUrl: 'https://console.xfyun.cn/services/bm35', models: ['spark-pro-128k', 'spark-lite', 'spark-max'], category: 'cn' },
   // === 国际主流 ===
   { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', apiKeyUrl: 'https://platform.openai.com/api-keys', models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o1', 'o1-mini', 'o3-mini'], category: 'intl' },
-  { id: 'anthropic', name: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1', apiType: 'anthropic', apiKeyUrl: 'https://console.anthropic.com/settings/keys', models: ['claude-sonnet-4-5', 'claude-haiku-3-5', 'claude-3-opus'], category: 'intl' },
-  { id: 'google', name: 'Google Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', apiType: 'google-genai', apiKeyUrl: 'https://aistudio.google.com/app/apikey', models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'], category: 'intl' },
+  { id: 'anthropic', name: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1', apiType: 'anthropic-messages', apiKeyUrl: 'https://console.anthropic.com/settings/keys', models: ['claude-sonnet-4-5', 'claude-haiku-3-5', 'claude-3-opus'], category: 'intl' },
+  { id: 'google', name: 'Google Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', apiType: 'google-generative-ai', apiKeyUrl: 'https://aistudio.google.com/app/apikey', models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'], category: 'intl' },
   { id: 'xai', name: 'xAI (Grok)', baseUrl: 'https://api.x.ai/v1', apiKeyUrl: 'https://console.x.ai/', models: ['grok-3', 'grok-3-mini', 'grok-2'], category: 'intl' },
   { id: 'groq', name: 'Groq', baseUrl: 'https://api.groq.com/openai/v1', apiKeyUrl: 'https://console.groq.com/keys', models: ['llama-3.3-70b-versatile', 'mixtral-8x7b-32768', 'gemma2-9b-it'], category: 'intl' },
   // === 聚合平台 ===
@@ -472,9 +472,14 @@ export default function SystemConfig() {
                       <div className="relative">
                         <select value={prov.api || 'openai-completions'} onChange={e => setVal(`models.providers.${pid}.api`, e.target.value)}
                           className="w-full px-3.5 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50/50 dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 appearance-none cursor-pointer">
-                          <option value="openai-completions">OpenAI Completions (通用)</option>
-                          <option value="anthropic">Anthropic</option>
-                          <option value="google-genai">Google GenAI</option>
+                          <option value="openai-completions">OpenAI Chat Completions API</option>
+                          <option value="openai-responses">OpenAI Responses API</option>
+                          <option value="openai-codex-responses">OpenAI Codex Responses API</option>
+                          <option value="anthropic-messages">Anthropic Messages API</option>
+                          <option value="google-generative-ai">Google Generative AI (Gemini) API</option>
+                          <option value="github-copilot">GitHub Copilot API</option>
+                          <option value="bedrock-converse-stream">AWS Bedrock Converse Stream API</option>
+                          <option value="ollama">Ollama 本地模型 API</option>
                         </select>
                         <ChevronDown size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                       </div>

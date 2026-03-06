@@ -15,6 +15,61 @@ import (
 	"github.com/zhaoxinyi02/ClawPanel/internal/process"
 )
 
+func normalizeProviderAPI(api string) string {
+	switch api {
+	case "anthropic":
+		return "anthropic-messages"
+	case "google-genai":
+		return "google-generative-ai"
+	default:
+		return api
+	}
+}
+
+func normalizeProviderAPIs(providers map[string]interface{}) {
+	for _, prov := range providers {
+		p, ok := prov.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if api, ok := p["api"].(string); ok {
+			p["api"] = normalizeProviderAPI(api)
+		}
+		modelList, _ := p["models"].([]interface{})
+		for _, m := range modelList {
+			model, ok := m.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if api, ok := model["api"].(string); ok {
+				model["api"] = normalizeProviderAPI(api)
+			}
+		}
+	}
+}
+
+func preserveHiddenOpenClawFields(dst, src map[string]interface{}) {
+	if dst == nil || src == nil {
+		return
+	}
+	if tools, ok := src["tools"]; ok {
+		dst["tools"] = tools
+	}
+	if session, ok := src["session"]; ok {
+		dst["session"] = session
+	}
+	if srcCron, ok := src["cron"].(map[string]interface{}); ok {
+		dstCron, _ := dst["cron"].(map[string]interface{})
+		if jobs, ok := srcCron["jobs"]; ok {
+			if dstCron == nil {
+				dstCron = map[string]interface{}{}
+			}
+			dstCron["jobs"] = jobs
+			dst["cron"] = dstCron
+		}
+	}
+}
+
 // GetOpenClawConfig 获取 OpenClaw 配置
 func GetOpenClawConfig(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -51,6 +106,7 @@ func SaveOpenClawConfig(cfg *config.Config) gin.HandlerFunc {
 		if ocCfg == nil {
 			ocCfg = map[string]interface{}{}
 		}
+		existingCfg, _ := cfg.ReadOpenClawJSON()
 
 		// 移除不应保存的字段
 		delete(ocCfg, "tools")
@@ -64,6 +120,8 @@ func SaveOpenClawConfig(cfg *config.Config) gin.HandlerFunc {
 
 		// 自动为非 OpenAI 提供商注入 compat.supportsDeveloperRole=false
 		injectCompatFlags(ocCfg)
+		normalizeOpenClawModelAPIs(ocCfg)
+		preserveHiddenOpenClawFields(ocCfg, existingCfg)
 
 		if err := cfg.WriteOpenClawJSON(ocCfg); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
@@ -120,6 +178,9 @@ func SaveModels(cfg *config.Config) gin.HandlerFunc {
 		}
 
 		if providers, ok := body["providers"]; ok {
+			if provMap, ok := providers.(map[string]interface{}); ok {
+				normalizeProviderAPIs(provMap)
+			}
 			if models, ok := ocConfig["models"].(map[string]interface{}); ok {
 				models["providers"] = providers
 			} else {
@@ -131,6 +192,7 @@ func SaveModels(cfg *config.Config) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
 			return
 		}
+		patchModelsJSON(cfg)
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	}
 }
@@ -434,6 +496,18 @@ func injectCompatFlags(ocCfg map[string]interface{}) {
 	}
 }
 
+func normalizeOpenClawModelAPIs(ocCfg map[string]interface{}) {
+	models, _ := ocCfg["models"].(map[string]interface{})
+	if models == nil {
+		return
+	}
+	providers, _ := models["providers"].(map[string]interface{})
+	if providers == nil {
+		return
+	}
+	normalizeProviderAPIs(providers)
+}
+
 // patchModelsJSON 修补运行时 models.json
 func patchModelsJSON(cfg *config.Config) {
 	modelsPath := filepath.Join(cfg.OpenClawDir, "agents", "main", "agent", "models.json")
@@ -453,6 +527,33 @@ func patchModelsJSON(cfg *config.Config) {
 	}
 
 	changed := false
+	for _, prov := range providers {
+		p, ok := prov.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if api, ok := p["api"].(string); ok {
+			normalized := normalizeProviderAPI(api)
+			if normalized != api {
+				p["api"] = normalized
+				changed = true
+			}
+		}
+		modelList, _ := p["models"].([]interface{})
+		for _, m := range modelList {
+			model, ok := m.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if api, ok := model["api"].(string); ok {
+				normalized := normalizeProviderAPI(api)
+				if normalized != api {
+					model["api"] = normalized
+					changed = true
+				}
+			}
+		}
+	}
 	for _, prov := range providers {
 		p, ok := prov.(map[string]interface{})
 		if !ok {
