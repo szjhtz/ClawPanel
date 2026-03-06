@@ -121,6 +121,7 @@ func SaveOpenClawConfig(cfg *config.Config) gin.HandlerFunc {
 		// 自动为非 OpenAI 提供商注入 compat.supportsDeveloperRole=false
 		injectCompatFlags(ocCfg)
 		normalizeOpenClawModelAPIs(ocCfg)
+		syncAllowedModels(ocCfg)
 		preserveHiddenOpenClawFields(ocCfg, existingCfg)
 
 		if err := cfg.WriteOpenClawJSON(ocCfg); err != nil {
@@ -187,6 +188,7 @@ func SaveModels(cfg *config.Config) gin.HandlerFunc {
 				ocConfig["models"] = map[string]interface{}{"providers": providers}
 			}
 		}
+		syncAllowedModels(ocConfig)
 
 		if err := cfg.WriteOpenClawJSON(ocConfig); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
@@ -506,6 +508,61 @@ func normalizeOpenClawModelAPIs(ocCfg map[string]interface{}) {
 		return
 	}
 	normalizeProviderAPIs(providers)
+}
+
+func syncAllowedModels(ocCfg map[string]interface{}) {
+	agents, _ := ocCfg["agents"].(map[string]interface{})
+	if agents == nil {
+		return
+	}
+	defaults, _ := agents["defaults"].(map[string]interface{})
+	if defaults == nil {
+		return
+	}
+	current, hasCurrent := defaults["models"]
+	if !hasCurrent {
+		return
+	}
+	currentMap, ok := current.(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	models, _ := ocCfg["models"].(map[string]interface{})
+	providers, _ := models["providers"].(map[string]interface{})
+	if providers == nil {
+		defaults["models"] = map[string]interface{}{}
+		return
+	}
+
+	next := map[string]interface{}{}
+	for pid, prov := range providers {
+		p, ok := prov.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		modelList, _ := p["models"].([]interface{})
+		for _, rawModel := range modelList {
+			var modelID string
+			switch model := rawModel.(type) {
+			case string:
+				modelID = model
+			case map[string]interface{}:
+				modelID, _ = model["id"].(string)
+			}
+			if pid == "" || modelID == "" {
+				continue
+			}
+			key := pid + "/" + modelID
+			if existing, ok := currentMap[key]; ok {
+				next[key] = existing
+			} else {
+				next[key] = map[string]interface{}{}
+			}
+		}
+	}
+
+	defaults["models"] = next
 }
 
 // patchModelsJSON 修补运行时 models.json

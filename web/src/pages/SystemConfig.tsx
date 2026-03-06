@@ -158,14 +158,38 @@ export default function SystemConfig() {
   }, [tab]);
 
   const getVal = (path: string): any => path.split('.').reduce((o: any, k: string) => o?.[k], config);
-  const setVal = (path: string, value: any) => {
+  const syncAllowedModels = (draft: any) => {
+    const current = draft?.agents?.defaults?.models;
+    if (!current || typeof current !== 'object' || Array.isArray(current)) return;
+
+    const next: Record<string, any> = {};
+    const providers = draft?.models?.providers || {};
+
+    Object.entries(providers).forEach(([pid, prov]: [string, any]) => {
+      (prov?.models || []).forEach((model: any) => {
+        const mid = typeof model === 'string' ? model : model?.id;
+        if (!pid || !mid) return;
+        const key = `${pid}/${mid}`;
+        next[key] = current[key] && typeof current[key] === 'object' ? current[key] : {};
+      });
+    });
+
+    draft.agents.defaults.models = next;
+  };
+  const updateConfig = (mutate: (draft: any) => void) => {
     setConfig((prev: any) => {
       const clone = JSON.parse(JSON.stringify(prev));
+      mutate(clone);
+      syncAllowedModels(clone);
+      return clone;
+    });
+  };
+  const setVal = (path: string, value: any) => {
+    updateConfig((clone: any) => {
       const keys = path.split('.');
       let cur = clone;
       for (let i = 0; i < keys.length - 1; i++) { if (!cur[keys[i]]) cur[keys[i]] = {}; cur = cur[keys[i]]; }
       cur[keys[keys.length - 1]] = value;
-      return clone;
     });
   };
 
@@ -332,7 +356,7 @@ export default function SystemConfig() {
                     const alreadyAdded = Object.keys(providers).includes(kp.id);
                     return (
                       <button key={kp.id} disabled={alreadyAdded} onClick={() => {
-                        const clone = JSON.parse(JSON.stringify(config));
+                        updateConfig((clone: any) => {
                         if (!clone.models) clone.models = {};
                         if (!clone.models.providers) clone.models.providers = {};
                         clone.models.providers[kp.id] = {
@@ -341,7 +365,7 @@ export default function SystemConfig() {
                           api: kp.apiType || 'openai-completions',
                           models: kp.models.map(m => ({ id: m, name: m, contextWindow: 128000, maxTokens: 8192 })),
                         };
-                        setConfig(clone);
+                        });
                       }} className={`px-2 py-0.5 text-[10px] font-medium rounded-md border transition-colors ${alreadyAdded ? 'opacity-40 cursor-not-allowed bg-gray-50 dark:bg-gray-800 text-gray-400 border-gray-200 dark:border-gray-700' : color}`}
                         title={alreadyAdded ? '已添加' : `点击添加 ${kp.nameZh || kp.name}`}>
                         {kp.nameZh || kp.name}{alreadyAdded ? ' ✓' : ''}
@@ -358,7 +382,11 @@ export default function SystemConfig() {
               <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">{i18n.sysConfig.modelProviders} ({Object.keys(providers).length})</h3>
               <button onClick={() => {
                 const id = `provider-${Date.now()}`;
-                setVal(`models.providers.${id}`, { baseUrl: '', apiKey: '', api: 'openai-completions', models: [] });
+                updateConfig((clone: any) => {
+                  if (!clone.models) clone.models = {};
+                  if (!clone.models.providers) clone.models.providers = {};
+                  clone.models.providers[id] = { baseUrl: '', apiKey: '', api: 'openai-completions', models: [] };
+                });
               }} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-violet-50 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 hover:bg-violet-100 dark:hover:bg-violet-900/50 transition-colors">
                 <Plus size={14} />{i18n.sysConfig.addProvider}
               </button>
@@ -376,22 +404,22 @@ export default function SystemConfig() {
                         <input value={pid} onChange={e => {
                           const newId = e.target.value;
                           if (!newId || newId === pid) return;
-                          const clone = JSON.parse(JSON.stringify(config));
+                          updateConfig((clone: any) => {
                           clone.models.providers[newId] = clone.models.providers[pid];
                           delete clone.models.providers[pid];
                           const primary = clone.agents?.defaults?.model?.primary || '';
                           if (primary.startsWith(pid + '/')) {
                             clone.agents.defaults.model.primary = newId + primary.slice(pid.length);
                           }
-                          setConfig(clone);
+                          });
                         }} className="text-base font-bold bg-transparent border-b border-dashed border-gray-300 dark:border-gray-600 focus:border-violet-500 outline-none px-1 py-0.5 min-w-[120px] transition-colors text-gray-900 dark:text-white" title="点击编辑 Provider ID" />
                         {prov.models?.length > 0 && <span className="text-xs text-gray-400 font-medium px-2 py-0.5 bg-gray-50 dark:bg-gray-800 rounded-full">{prov.models.length} 模型</span>}
                       </div>
                     </div>
                     <button onClick={() => {
-                      const clone = JSON.parse(JSON.stringify(config));
-                      delete clone.models.providers[pid];
-                      setConfig(clone);
+                      updateConfig((clone: any) => {
+                        delete clone.models.providers[pid];
+                      });
                     }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"><Trash2 size={16} /></button>
                   </div>
 
@@ -400,11 +428,11 @@ export default function SystemConfig() {
                       <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mr-1">国内</span>
                       {KNOWN_PROVIDERS.filter(kp => kp.category === 'cn').map(kp => (
                         <button key={kp.id} onClick={() => {
-                          const clone = JSON.parse(JSON.stringify(config));
+                          updateConfig((clone: any) => {
                           if (!clone.models) clone.models = {};
                           if (!clone.models.providers) clone.models.providers = {};
                           clone.models.providers[pid] = { ...clone.models.providers[pid], baseUrl: kp.baseUrl, api: kp.apiType || 'openai-completions' };
-                          setConfig(clone);
+                          });
                         }} className="px-2 py-0.5 text-[10px] font-medium rounded-md bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors border border-red-100 dark:border-red-800/30" title={kp.nameZh}>
                           {kp.nameZh || kp.name}
                         </button>
@@ -414,11 +442,11 @@ export default function SystemConfig() {
                       <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mr-1">国际</span>
                       {KNOWN_PROVIDERS.filter(kp => kp.category === 'intl').map(kp => (
                         <button key={kp.id} onClick={() => {
-                          const clone = JSON.parse(JSON.stringify(config));
+                          updateConfig((clone: any) => {
                           if (!clone.models) clone.models = {};
                           if (!clone.models.providers) clone.models.providers = {};
                           clone.models.providers[pid] = { ...clone.models.providers[pid], baseUrl: kp.baseUrl, api: kp.apiType || 'openai-completions' };
-                          setConfig(clone);
+                          });
                         }} className="px-2 py-0.5 text-[10px] font-medium rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors border border-blue-100 dark:border-blue-800/30">
                           {kp.name}
                         </button>
@@ -428,11 +456,11 @@ export default function SystemConfig() {
                       <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mr-1">聚合</span>
                       {KNOWN_PROVIDERS.filter(kp => kp.category === 'agg').map(kp => (
                         <button key={kp.id} onClick={() => {
-                          const clone = JSON.parse(JSON.stringify(config));
+                          updateConfig((clone: any) => {
                           if (!clone.models) clone.models = {};
                           if (!clone.models.providers) clone.models.providers = {};
                           clone.models.providers[pid] = { ...clone.models.providers[pid], baseUrl: kp.baseUrl, api: kp.apiType || 'openai-completions' };
-                          setConfig(clone);
+                          });
                         }} className="px-2 py-0.5 text-[10px] font-medium rounded-md bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors border border-amber-100 dark:border-amber-800/30">
                           {kp.name}
                         </button>
@@ -498,13 +526,13 @@ export default function SystemConfig() {
                       {(prov.models || []).map((m: any, idx: number) => {
                         const mObj = typeof m === 'string' ? { id: m, name: m } : m;
                         const updateModel = (key: string, val: any) => {
-                          const clone = JSON.parse(JSON.stringify(config));
-                          const models = clone.models.providers[pid].models || [];
-                          if (typeof models[idx] === 'string') models[idx] = { id: models[idx], name: models[idx] };
-                          models[idx] = { ...models[idx], [key]: val };
-                          if (key === 'id') models[idx].name = val;
-                          clone.models.providers[pid].models = models;
-                          setConfig(clone);
+                          updateConfig((clone: any) => {
+                            const models = clone.models.providers[pid].models || [];
+                            if (typeof models[idx] === 'string') models[idx] = { id: models[idx], name: models[idx] };
+                            models[idx] = { ...models[idx], [key]: val };
+                            if (key === 'id') models[idx].name = val;
+                            clone.models.providers[pid].models = models;
+                          });
                         };
                         return (
                         <div key={idx} className="p-3 rounded-lg bg-gray-50/80 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 space-y-3 group hover:border-violet-200 dark:hover:border-violet-800 transition-colors">
@@ -515,9 +543,9 @@ export default function SystemConfig() {
                             <input value={mObj.id || ''} onChange={e => updateModel('id', e.target.value)}
                               placeholder="模型 ID" className="flex-1 px-2 py-1 text-sm font-mono font-medium bg-transparent border-b border-transparent focus:border-violet-500 outline-none transition-colors" />
                             <button onClick={() => {
-                              const clone = JSON.parse(JSON.stringify(config));
-                              clone.models.providers[pid].models.splice(idx, 1);
-                              setConfig(clone);
+                              updateConfig((clone: any) => {
+                                clone.models.providers[pid].models.splice(idx, 1);
+                              });
                             }} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={14} /></button>
                           </div>
                           <div className="grid grid-cols-3 gap-3 pl-9">
@@ -545,20 +573,20 @@ export default function SystemConfig() {
                       })}
                       <div className="flex gap-2 mt-2 flex-wrap pt-1">
                         <button onClick={() => {
-                          const clone = JSON.parse(JSON.stringify(config));
+                          updateConfig((clone: any) => {
                           if (!clone.models.providers[pid].models) clone.models.providers[pid].models = [];
                           clone.models.providers[pid].models.push({ id: '', name: '', contextWindow: 128000, maxTokens: 8192 });
-                          setConfig(clone);
+                          });
                         }} className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 border-dashed hover:border-solid transition-all flex items-center gap-1.5">
                           <Plus size={12} /> 自定义模型
                         </button>
                         {KNOWN_PROVIDERS.filter(kp => prov.baseUrl?.includes(kp.baseUrl.replace('https://', '').split('/')[0])).flatMap(kp =>
                           kp.models.filter(m => !(prov.models || []).find((pm: any) => (typeof pm === 'string' ? pm : pm.id) === m)).slice(0, 4).map(m => (
                             <button key={m} onClick={() => {
-                              const clone = JSON.parse(JSON.stringify(config));
+                              updateConfig((clone: any) => {
                               if (!clone.models.providers[pid].models) clone.models.providers[pid].models = [];
                               clone.models.providers[pid].models.push({ id: m, name: m, contextWindow: 128000, maxTokens: 8192 });
-                              setConfig(clone);
+                              });
                             }} className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors flex items-center gap-1.5">
                               <Plus size={12} /> {m}
                             </button>
