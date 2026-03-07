@@ -325,6 +325,12 @@ sc query ClawPanel
 
 完整更新日志请查看 [changelogs/](changelogs/) 目录。
 
+### v5.1.5 — Agent 核心文件、网关探测增强与飞书切换修复
+- **🧠 Agent 工作区增强**：新增 `Core Files`、`Skills · Channels · Cron`、`Recent Sessions` 等工作台能力，更接近官方单 Agent 管理体验
+- **🛡️ 网关与启动稳定性提升**：启动时可识别外部管理中的 OpenClaw，按 `gateway.bind` 精确探测端口，减少误判和重复拉起
+- **🪟 Windows CI 修复**：修正 `launch_windows.go` 中的 Windows `unsafe.Pointer` / 环境块处理问题，恢复 `windows-2025` CI 绿灯
+- **🔀 飞书双版本切换收口**：切换前校验目标插件是否已安装，前端未安装版本禁用切换，避免切到不可用实现
+
 ### v5.0.24 — 修复 QQ 唤醒配置不生效（Issue #21）
 - **🐛 修复 QQ 唤醒配置不生效**：修复 `wakeProbability`、`wakeTrigger` 等配置仅在面板展示但未落到插件实际生效路径的问题
 - **✨ 兼容旧配置字段**：后端保存 QQ 通道配置时自动迁移旧字段（`wakeProbability`/`wakeTrigger`/`minSendIntervalMs`/`autoApprove*`）到新版结构，避免升级后失效
