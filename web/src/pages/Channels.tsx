@@ -410,6 +410,7 @@ export default function Channels() {
   const [loadingFeishuDmDiagnosis, setLoadingFeishuDmDiagnosis] = useState(false);
   const [savingFeishuDmScope, setSavingFeishuDmScope] = useState(false);
   const qrPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const feishuAccountModeInitializedRef = useRef(false);
   const navigate = useNavigate();
 
   const normalizeChannelQuery = (value: string | null) => {
@@ -424,7 +425,14 @@ export default function Channels() {
     const hasAccounts = hasFeishuAdvancedAccounts(feishuCfg);
     const defaultAccount = pickFeishuDefaultAccount(feishuCfg);
     const accountIDs = listFeishuAccountIDs(feishuCfg);
-    setFeishuAdvancedAccounts(hasAccounts);
+    setFeishuAdvancedAccounts(prev => {
+      if (!feishuAccountModeInitializedRef.current) {
+        feishuAccountModeInitializedRef.current = true;
+        return hasAccounts;
+      }
+      if (!hasAccounts) return false;
+      return prev;
+    });
     setFeishuActiveAccountId(accountIDs.includes(defaultAccount) ? defaultAccount : (defaultAccount || accountIDs[0] || 'default'));
     setFeishuNewAccountId('');
   }, []);
@@ -600,10 +608,19 @@ export default function Channels() {
   const currentFeishuVariant = getActiveFeishuVariant(ocConfig);
   const currentFeishuAccounts = listFeishuAccountIDs(currentFeishuConfig);
   const currentFeishuDefaultAccount = pickFeishuDefaultAccount(currentFeishuConfig);
+  const currentFeishuEditingAccountId = currentFeishuAccounts.includes(feishuActiveAccountId)
+    ? feishuActiveAccountId
+    : (currentFeishuDefaultAccount || currentFeishuAccounts[0] || 'default');
   const currentFeishuSimpleCredentials = resolveFeishuSimpleCredentials(currentFeishuConfig);
-  const currentFeishuAccountConfig = isPlainObject(currentFeishuConfig.accounts?.[feishuActiveAccountId])
-    ? currentFeishuConfig.accounts[feishuActiveAccountId]
+  const currentFeishuAccountConfig = isPlainObject(currentFeishuConfig.accounts?.[currentFeishuEditingAccountId])
+    ? currentFeishuConfig.accounts[currentFeishuEditingAccountId]
     : {};
+  const currentFeishuHasStoredAccounts = hasFeishuAdvancedAccounts(currentFeishuConfig);
+  const currentFeishuVariantHint = currentFeishuVariant === 'official'
+    ? '官方版仍在快速迭代，面板目前优先暴露确认过的共享字段。'
+    : currentFeishuVariant === 'clawteam'
+      ? 'ClawTeam 版字段相对明确；这里仍统一写入 channels.feishu 共享配置。'
+      : '未检测到活动变体时，也会先写入共享的 channels.feishu 配置。';
   const currentFeishuGroupPolicy = String(currentFeishuConfig.groupPolicy || '').trim();
   const currentFeishuGroupAllowFrom = formatCommaList(currentFeishuConfig.groupAllowFrom);
   const hasFeishuGroupAllowlistConflict = currentFeishuGroupPolicy !== 'allowlist' && !!currentFeishuGroupAllowFrom;
@@ -613,7 +630,10 @@ export default function Channels() {
 
   const handleToggleFeishuAdvancedAccounts = (enabled: boolean) => {
     setFeishuAdvancedAccounts(enabled);
-    if (!enabled) return;
+    if (!enabled) {
+      setFeishuActiveAccountId(currentFeishuDefaultAccount || 'default');
+      return;
+    }
     const seededAccount = currentFeishuDefaultAccount || 'default';
     updateFeishuDraft(draft => {
       if (!isPlainObject(draft.accounts)) draft.accounts = {};
@@ -693,7 +713,7 @@ export default function Channels() {
 
   const handleRemoveFeishuAccount = (accountId: string) => {
     if (currentFeishuAccounts.length <= 1) {
-      setMsg('至少保留一个 Account；如果只需要单机器人，请关闭完整版 Account 功能。');
+      setMsg('至少保留一个账号；如果只需要单机器人，请切回单账号模式。');
       setTimeout(() => setMsg(''), 4000);
       return;
     }
@@ -1635,96 +1655,109 @@ export default function Channels() {
 
               {currentDef.id === 'feishu' && (
                 <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-4">
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="space-y-1">
-                      <div className="text-sm font-semibold text-gray-900 dark:text-white">Account 兼容模式</div>
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                    <div className="space-y-1.5">
+                      <div className="text-sm font-semibold text-gray-900 dark:text-white">账号配置</div>
                       <p className="text-xs text-gray-500 leading-relaxed">
-                        默认使用简版单账号语法；开启「完整版 Account」后，会额外维护
-                        <span className="mx-1 font-mono">channels.feishu.accounts/defaultAccount</span>
-                        ，并与 Agent 路由里的 <span className="font-mono">accountId</span> 对齐。
+                        按是否需要给不同飞书机器人分配不同 Agent，选择单账号或多账号配置方式。
                       </p>
                       <p className="text-xs text-gray-500 leading-relaxed">
-                        当前配置仍共享 <span className="font-mono">channels.feishu</span>；默认账号的凭证会同步镜像到顶层
-                        <span className="mx-1 font-mono">appId/appSecret</span>
-                        ，兼容简版与完整版两种写法。
+                        保存时会自动把默认账号同步到顶层 <span className="mx-1 font-mono">appId/appSecret</span>，
+                        用于兼容现有插件和旧写法；日常编辑只需要关注当前表单。
                       </p>
                     </div>
-                    <div className="flex items-center gap-3 p-3 rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/30">
-                      <span className={`text-xs ${feishuAdvancedAccounts ? 'text-violet-600 dark:text-violet-400 font-medium' : 'text-gray-500'}`}>
-                        {feishuAdvancedAccounts ? '已开启完整版 Account' : '当前为简版单账号'}
-                      </span>
+                    <div className="inline-flex rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-1">
                       <button
                         type="button"
-                        onClick={() => handleToggleFeishuAdvancedAccounts(!feishuAdvancedAccounts)}
-                        className={`relative w-9 h-5 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-violet-500 ${feishuAdvancedAccounts ? 'bg-violet-600' : 'bg-gray-300 dark:bg-gray-600'}`}
+                        onClick={() => handleToggleFeishuAdvancedAccounts(false)}
+                        className={`px-3.5 py-2 text-xs font-medium rounded-lg transition-colors ${
+                          !feishuAdvancedAccounts
+                            ? 'bg-white dark:bg-gray-800 text-violet-700 dark:text-violet-300 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                        }`}
                       >
-                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${feishuAdvancedAccounts ? 'translate-x-4' : ''}`} />
+                        单账号
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleFeishuAdvancedAccounts(true)}
+                        className={`px-3.5 py-2 text-xs font-medium rounded-lg transition-colors ${
+                          feishuAdvancedAccounts
+                            ? 'bg-white dark:bg-gray-800 text-violet-700 dark:text-violet-300 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                        }`}
+                      >
+                        多账号
                       </button>
                     </div>
                   </div>
 
-                  {!feishuAdvancedAccounts && hasFeishuAdvancedAccounts(currentFeishuConfig) && (
-                    <div className="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50/70 dark:bg-amber-900/10 px-4 py-3 text-xs text-amber-700 dark:text-amber-300">
-                      当前配置已存在多账号结构；关闭完整版 Account 仅隐藏编辑区，不会删除已有账号。简版输入会继续编辑默认账号
-                      {currentFeishuDefaultAccount ? `（${currentFeishuDefaultAccount}）` : ''} 的凭证镜像。
-                    </div>
-                  )}
-
-                  <div className="rounded-xl border border-gray-100 dark:border-gray-700 p-4 space-y-4">
-                    <div>
-                      <h4 className="text-sm font-semibold text-gray-900 dark:text-white">基础凭证</h4>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {currentFeishuVariant === 'official'
-                          ? '官方版早期仍在快速迭代，面板优先展示确认过的共享字段。'
-                          : currentFeishuVariant === 'clawteam'
-                            ? 'ClawTeam 版字段更明确；这里仍统一写入 channels.feishu 共享配置。'
-                            : '未检测到活动变体时，也会先写入共享的 channels.feishu 配置。'}
-                      </p>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">App ID</label>
-                        <input
-                          value={feishuAdvancedAccounts ? String(currentFeishuAccountConfig.appId || '') : currentFeishuSimpleCredentials.appId}
-                          onChange={e => {
-                            const value = e.target.value;
-                            if (feishuAdvancedAccounts) handleFeishuAccountFieldChange(feishuActiveAccountId || currentFeishuDefaultAccount, 'appId', value);
-                            else handleFeishuSimpleFieldChange('appId', value);
-                          }}
-                          placeholder="cli_xxx"
-                          className="w-full px-3.5 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">App Secret</label>
-                        <input
-                          type="password"
-                          value={feishuAdvancedAccounts ? String(currentFeishuAccountConfig.appSecret || '') : currentFeishuSimpleCredentials.appSecret}
-                          onChange={e => {
-                            const value = e.target.value;
-                            if (feishuAdvancedAccounts) handleFeishuAccountFieldChange(feishuActiveAccountId || currentFeishuDefaultAccount, 'appSecret', value);
-                            else handleFeishuSimpleFieldChange('appSecret', value);
-                          }}
-                          placeholder="请输入 App Secret"
-                          className="w-full px-3.5 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900"
-                        />
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="rounded-lg border border-gray-100 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/30 px-3 py-2.5">
+                      <div className="text-[11px] text-gray-500">当前模式</div>
+                      <div className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                        {feishuAdvancedAccounts ? '多账号' : '单账号'}
                       </div>
                     </div>
-                    {!feishuAdvancedAccounts && (
-                      <p className="text-[11px] text-gray-500 leading-relaxed">
-                        简版模式下只需维护顶层 <span className="font-mono">appId/appSecret</span>；如要给不同飞书机器人分配不同 Agent，再开启完整版 Account。
-                      </p>
-                    )}
+                    <div className="rounded-lg border border-gray-100 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/30 px-3 py-2.5">
+                      <div className="text-[11px] text-gray-500">默认账号</div>
+                      <div className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                        {currentFeishuDefaultAccount || '未设置'}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-gray-100 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/30 px-3 py-2.5">
+                      <div className="text-[11px] text-gray-500">已保存账号数</div>
+                      <div className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                        {currentFeishuAccounts.length}
+                      </div>
+                    </div>
                   </div>
 
-                  {feishuAdvancedAccounts && (
+                  {!feishuAdvancedAccounts ? (
+                    <div className="rounded-xl border border-gray-100 dark:border-gray-700 p-4 space-y-4">
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-900 dark:text-white">单账号凭证</h4>
+                        <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                          {currentFeishuHasStoredAccounts
+                            ? `当前仍保留 ${currentFeishuAccounts.length} 个账号；单账号表单只会编辑默认账号 ${currentFeishuDefaultAccount || 'default'}，其他账号不会删除。`
+                            : '维护一套共享 App ID / App Secret 即可，适合只接一个飞书机器人。'}
+                        </p>
+                        <p className="text-[11px] text-gray-500 mt-1">{currentFeishuVariantHint}</p>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">App ID</label>
+                          <input
+                            value={currentFeishuSimpleCredentials.appId}
+                            onChange={e => handleFeishuSimpleFieldChange('appId', e.target.value)}
+                            placeholder="cli_xxx"
+                            className="w-full px-3.5 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">App Secret</label>
+                          <input
+                            type="password"
+                            value={currentFeishuSimpleCredentials.appSecret}
+                            onChange={e => handleFeishuSimpleFieldChange('appSecret', e.target.value)}
+                            placeholder="请输入 App Secret"
+                            className="w-full px-3.5 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-gray-500 leading-relaxed">
+                        如果后续需要给不同飞书机器人分配不同 Agent，再切到多账号模式添加账号。
+                      </p>
+                    </div>
+                  ) : (
                     <div className="rounded-xl border border-gray-100 dark:border-gray-700 p-4 space-y-4">
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                         <div>
-                          <h4 className="text-sm font-semibold text-gray-900 dark:text-white">完整版 Account 管理</h4>
-                          <p className="text-xs text-gray-500 mt-1">
-                            默认账号会被 Agent 路由里的空 <span className="font-mono">accountId</span> 命中；写入后会同步镜像到顶层凭证。
+                          <h4 className="text-sm font-semibold text-gray-900 dark:text-white">多账号管理</h4>
+                          <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                            每个 Account 单独维护凭证；默认账号会命中 Agent 路由里留空的 <span className="font-mono">accountId</span>。
                           </p>
+                          <p className="text-[11px] text-gray-500 mt-1">{currentFeishuVariantHint}</p>
                         </div>
                         <div className="flex flex-col sm:flex-row gap-2">
                           <input
@@ -1738,62 +1771,106 @@ export default function Channels() {
                             onClick={handleAddFeishuAccount}
                             className="px-3 py-2 text-xs font-medium rounded-lg bg-violet-600 text-white hover:bg-violet-700"
                           >
-                            添加 Account
+                            添加账号
                           </button>
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)] gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-[240px_minmax(0,1fr)] gap-4">
                         <div className="space-y-3">
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">默认账号</label>
-                            <select
-                              value={currentFeishuDefaultAccount}
-                              onChange={e => handleFeishuDefaultAccountChange(e.target.value)}
-                              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900"
-                            >
-                              {currentFeishuAccounts.map(accountId => (
-                                <option key={accountId} value={accountId}>{accountId}</option>
-                              ))}
-                            </select>
+                          <div className="rounded-lg border border-gray-100 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/30 px-3 py-3">
+                            <div className="text-xs font-semibold text-gray-900 dark:text-white">默认账号</div>
+                            <div className="mt-1 text-sm font-semibold text-violet-700 dark:text-violet-300">
+                              {currentFeishuDefaultAccount || '未设置'}
+                            </div>
+                            <p className="mt-1 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+                              Agent 页面会读取这里的 <span className="font-mono">accounts/defaultAccount</span>，
+                              从而为 <span className="font-mono">accountId</span> 提供下拉选择。
+                            </p>
                           </div>
                           <div className="space-y-2">
-                            {currentFeishuAccounts.map(accountId => (
-                              <button
-                                key={accountId}
-                                type="button"
-                                onClick={() => setFeishuActiveAccountId(accountId)}
-                                className={`w-full flex items-center justify-between gap-3 px-3 py-2 rounded-lg border text-left text-sm transition-colors ${
-                                  feishuActiveAccountId === accountId
-                                    ? 'border-violet-500 bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300'
-                                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:border-violet-300'
-                                }`}
-                              >
-                                <span className="truncate">{accountId}</span>
-                                {accountId === currentFeishuDefaultAccount && (
-                                  <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-300">默认</span>
-                                )}
-                              </button>
-                            ))}
+                            {currentFeishuAccounts.map(accountId => {
+                              const accountEntry = isPlainObject(currentFeishuConfig.accounts?.[accountId]) ? currentFeishuConfig.accounts[accountId] : {};
+                              const hasCredentials = !!String(accountEntry.appId || '').trim() || !!String(accountEntry.appSecret || '').trim();
+                              return (
+                                <button
+                                  key={accountId}
+                                  type="button"
+                                  onClick={() => setFeishuActiveAccountId(accountId)}
+                                  className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border text-left text-sm transition-colors ${
+                                    currentFeishuEditingAccountId === accountId
+                                      ? 'border-violet-500 bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300'
+                                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:border-violet-300'
+                                  }`}
+                                >
+                                  <div className="min-w-0">
+                                    <div className="truncate font-medium">{accountId}</div>
+                                    <div className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
+                                      {hasCredentials ? '已填写凭证' : '待填写凭证'}
+                                    </div>
+                                  </div>
+                                  {accountId === currentFeishuDefaultAccount && (
+                                    <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-300">默认</span>
+                                  )}
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
 
-                        <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-4 space-y-3">
-                          <div className="flex items-center justify-between gap-3">
+                        <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-4 space-y-4">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <div>
-                              <div className="text-sm font-semibold text-gray-900 dark:text-white">当前编辑：{feishuActiveAccountId}</div>
-                              <p className="text-xs text-gray-500 mt-1">如果它被设为默认账号，顶层 appId/appSecret 会自动同步为这个账号的值。</p>
+                              <div className="text-sm font-semibold text-gray-900 dark:text-white">当前账号：{currentFeishuEditingAccountId}</div>
+                              <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                                保存时，如果它是默认账号，会自动同步到顶层 <span className="font-mono">appId/appSecret</span>。
+                              </p>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveFeishuAccount(feishuActiveAccountId)}
-                              className="px-3 py-2 text-xs rounded-lg border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-900/20"
-                            >
-                              删除当前账号
-                            </button>
+                            <div className="flex flex-wrap items-center gap-2">
+                              {currentFeishuEditingAccountId !== currentFeishuDefaultAccount && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleFeishuDefaultAccountChange(currentFeishuEditingAccountId)}
+                                  className="px-3 py-2 text-xs rounded-lg border border-violet-200 text-violet-700 hover:bg-violet-50 dark:border-violet-900/40 dark:text-violet-300 dark:hover:bg-violet-900/20"
+                                >
+                                  设为默认
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveFeishuAccount(currentFeishuEditingAccountId)}
+                                className="px-3 py-2 text-xs rounded-lg border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-900/20"
+                              >
+                                删除当前账号
+                              </button>
+                            </div>
                           </div>
-                          <div className="text-[11px] text-gray-500">
-                            Agent 页面里的路由会自动读取这里的 <span className="font-mono">accounts/defaultAccount</span>，从而为 <span className="font-mono">accountId</span> 提供下拉选择。
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">App ID</label>
+                              <input
+                                value={String(currentFeishuAccountConfig.appId || '')}
+                                onChange={e => handleFeishuAccountFieldChange(currentFeishuEditingAccountId, 'appId', e.target.value)}
+                                placeholder="cli_xxx"
+                                className="w-full px-3.5 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">App Secret</label>
+                              <input
+                                type="password"
+                                value={String(currentFeishuAccountConfig.appSecret || '')}
+                                onChange={e => handleFeishuAccountFieldChange(currentFeishuEditingAccountId, 'appSecret', e.target.value)}
+                                placeholder="请输入 App Secret"
+                                className="w-full px-3.5 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="rounded-lg border border-sky-100 dark:border-sky-900/40 bg-sky-50/60 dark:bg-sky-950/20 px-3 py-3 text-[11px] leading-relaxed text-sky-800 dark:text-sky-200">
+                            未填写 <span className="font-mono">accountId</span> 的 Agent 路由会命中默认账号。
+                            如果你只是临时回到单账号视图，已有账号数据会继续保留，不会被删除。
                           </div>
                         </div>
                       </div>
