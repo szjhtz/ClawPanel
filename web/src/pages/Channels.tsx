@@ -42,6 +42,19 @@ type FeishuDMDiagnosis = {
   feishuSessionKeys?: string[];
   hasSharedMainSessionKey?: boolean;
   mainSessionKey?: string;
+  credentialsDir?: string;
+  pairingStorePath?: string;
+  pendingPairingCount?: number;
+  authorizedSenderCount?: number;
+  authorizedSenders?: FeishuAuthorizedSenderBucket[];
+};
+
+type FeishuAuthorizedSenderBucket = {
+  accountId: string;
+  accountConfigured?: boolean;
+  senderCount?: number;
+  senderIds?: string[];
+  sourceFiles?: string[];
 };
 
 function isPlainObject(value: any): value is Record<string, any> {
@@ -775,15 +788,19 @@ export default function Channels() {
   const currentFeishuRunnableAccounts = listFeishuRunnableAccountIDs(currentFeishuConfig);
   const currentFeishuEnabledCount = countEnabledFeishuAccounts(currentFeishuConfig);
   const currentFeishuVariantHint = currentFeishuVariant === 'official'
-    ? '官方版仍在快速迭代，面板目前优先暴露确认过的共享字段。'
+    ? '官方版仍在快速迭代；面板目前优先暴露确认过的共享字段，高级账号结构是否被完整消费取决于插件版本。'
     : currentFeishuVariant === 'clawteam'
       ? 'ClawTeam 版字段相对明确；这里仍统一写入 channels.feishu 共享配置。'
       : '未检测到活动变体时，也会先写入共享的 channels.feishu 配置。';
+  const currentFeishuAccountBoundaryHint = currentFeishuVariant === 'official'
+    ? '当前已检测到官方插件；面板统一写入 channels.feishu。defaultAccount/accounts 是当前面板的高级账号模型，但官方插件是否完整消费这套结构尚未完全证实，请以插件版本和实测为准。至少需要确保默认账号具备完整凭证，顶层 appId/appSecret 会镜像这个账号。'
+    : '面板统一写入 channels.feishu；默认账号会同步镜像到顶层 appId/appSecret，便于单账号路径与高级账号路径共存。';
   const currentFeishuGroupPolicy = String(currentFeishuConfig.groupPolicy || '').trim();
   const currentFeishuGroupAllowFrom = formatCommaList(currentFeishuConfig.groupAllowFrom);
   const hasFeishuGroupAllowlistConflict = currentFeishuGroupPolicy !== 'allowlist' && !!currentFeishuGroupAllowFrom;
   const currentConfiguredFeishuDmScope = String(feishuDmDiagnosis?.configuredDmScope || '').trim();
   const currentEffectiveFeishuDmScope = String(feishuDmDiagnosis?.effectiveDmScope || 'main').trim() || 'main';
+  const feishuAuthorizedSenders = Array.isArray(feishuDmDiagnosis?.authorizedSenders) ? feishuDmDiagnosis.authorizedSenders : [];
 
   const handleToggleFeishuAdvancedAccounts = (enabled: boolean) => {
     setFeishuAdvancedAccounts(enabled);
@@ -1905,6 +1922,10 @@ export default function Channels() {
                     </div>
                   </div>
 
+                  <div className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-[12px] leading-relaxed text-sky-700 dark:border-sky-900/40 dark:bg-sky-950/20 dark:text-sky-200">
+                    {currentFeishuAccountBoundaryHint}
+                  </div>
+
                   {!feishuAdvancedAccounts ? (
                     <div className="rounded-xl border border-gray-100 dark:border-gray-700 p-4 space-y-4">
                       <div>
@@ -2226,6 +2247,89 @@ export default function Channels() {
                           : <>当前未检测到共享主会话键。若已写入推荐值，新的飞书私聊应按账号 / 渠道 / 对端拆分。</>}
                       </p>
                     </div>
+                  </div>
+
+                  <div className="rounded-xl border border-sky-100 dark:border-sky-900/40 bg-white/75 dark:bg-slate-900/40 p-4 space-y-3">
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                      <div className="space-y-1.5">
+                        <h4 className="text-sm font-semibold text-gray-900 dark:text-white">配对授权状态</h4>
+                        <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+                          <span className="font-mono">openclaw pairing list feishu</span> 只显示待审批请求；
+                          已批准的用户会落到 <span className="font-mono">credentials/feishu-*-allowFrom.json</span>。
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 xl:w-[360px]">
+                        <div className="rounded-lg border border-white/80 dark:border-slate-800 bg-white/80 dark:bg-slate-900/50 px-3 py-2.5">
+                          <div className="text-[11px] text-gray-500">待审批请求</div>
+                          <div className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                            {feishuDmDiagnosis?.pendingPairingCount || 0}
+                          </div>
+                        </div>
+                        <div className="rounded-lg border border-white/80 dark:border-slate-800 bg-white/80 dark:bg-slate-900/50 px-3 py-2.5">
+                          <div className="text-[11px] text-gray-500">已授权 OpenID</div>
+                          <div className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                            {feishuDmDiagnosis?.authorizedSenderCount || 0}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {loadingFeishuDmDiagnosis ? (
+                      <div className="inline-flex items-center gap-2 text-[11px] text-gray-500">
+                        <Loader2 size={13} className="animate-spin" />
+                        正在读取飞书授权名单…
+                      </div>
+                    ) : feishuAuthorizedSenders.length > 0 ? (
+                      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                        {feishuAuthorizedSenders.map(bucket => (
+                          <div key={bucket.accountId} className="rounded-lg border border-white/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/30 p-3 space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-xs font-semibold text-gray-900 dark:text-white">账号</span>
+                              <span className="px-2 py-1 rounded-full border border-sky-100 dark:border-sky-900/40 bg-sky-50 dark:bg-sky-900/20 text-[11px] text-sky-700 dark:text-sky-300 font-mono">
+                                {bucket.accountId}
+                              </span>
+                              {!bucket.accountConfigured && (
+                                <span className="px-2 py-1 rounded-full border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/20 text-[11px] text-amber-700 dark:text-amber-300">
+                                  配置中未声明
+                                </span>
+                              )}
+                              <span className="text-[11px] text-gray-500">
+                                {bucket.senderCount || 0} 个已授权 OpenID
+                              </span>
+                            </div>
+                            {Array.isArray(bucket.senderIds) && bucket.senderIds.length > 0 ? (
+                              <div className="space-y-1">
+                                {bucket.senderIds.map(senderId => (
+                                  <div key={senderId} className="rounded-md bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[11px] text-gray-700 dark:text-gray-300 font-mono break-all">
+                                    {senderId}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="text-[11px] text-gray-500 dark:text-gray-400">
+                                当前未检测到该账号的已授权 OpenID。
+                              </div>
+                            )}
+                            {Array.isArray(bucket.sourceFiles) && bucket.sourceFiles.length > 0 && (
+                              <div className="rounded-md bg-slate-100/80 dark:bg-slate-900/60 px-2.5 py-2 text-[11px] text-gray-500 dark:text-gray-400">
+                                来源文件：
+                                <div className="mt-1 space-y-1">
+                                  {bucket.sourceFiles.map(sourceFile => (
+                                    <div key={sourceFile} className="font-mono break-all text-gray-600 dark:text-gray-300">
+                                      {sourceFile}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-slate-200 dark:border-slate-800 px-3 py-3 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+                        当前未检测到飞书已授权 OpenID。首次私聊触发配对后，审批成功的用户会显示在这里。
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
