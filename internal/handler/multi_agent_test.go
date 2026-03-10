@@ -1673,6 +1673,15 @@ func TestUpdateOpenClawAgentDropsUnsupportedPerAgentContextOverrides(t *testing.
 						"mode":            "safeguard",
 						"maxHistoryShare": 0.5,
 					},
+					"tools": map[string]interface{}{
+						"profile": "coding",
+						"agentToAgent": map[string]interface{}{
+							"enabled": true,
+						},
+						"sessions": map[string]interface{}{
+							"visibility": "all",
+						},
+					},
 				},
 			},
 		},
@@ -1680,7 +1689,7 @@ func TestUpdateOpenClawAgentDropsUnsupportedPerAgentContextOverrides(t *testing.
 
 	r := gin.New()
 	r.PUT("/openclaw/agents/:id", UpdateOpenClawAgent(cfg))
-	req := httptest.NewRequest(http.MethodPut, "/openclaw/agents/work", bytes.NewReader([]byte(`{"name":"Renamed Work","contextTokens":8192,"compaction":{"mode":"default","maxHistoryShare":0.6}}`)))
+	req := httptest.NewRequest(http.MethodPut, "/openclaw/agents/work", bytes.NewReader([]byte(`{"name":"Renamed Work","contextTokens":8192,"compaction":{"mode":"default","maxHistoryShare":0.6},"tools":{"profile":"full","agentToAgent":{"enabled":false},"sessions":{"visibility":"self"}}}`)))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -1711,6 +1720,73 @@ func TestUpdateOpenClawAgentDropsUnsupportedPerAgentContextOverrides(t *testing.
 	}
 	if _, ok := workItem["compaction"]; ok {
 		t.Fatalf("expected unsupported per-agent compaction to be dropped, got %#v", workItem["compaction"])
+	}
+	tools, _ := workItem["tools"].(map[string]interface{})
+	if got := strings.TrimSpace(getString(tools, "profile")); got != "full" {
+		t.Fatalf("expected supported per-agent tools.profile to be updated, got %q", got)
+	}
+	if _, ok := tools["agentToAgent"]; ok {
+		t.Fatalf("expected unsupported per-agent tools.agentToAgent to be dropped, got %#v", tools["agentToAgent"])
+	}
+	if _, ok := tools["sessions"]; ok {
+		t.Fatalf("expected unsupported per-agent tools.sessions to be dropped, got %#v", tools["sessions"])
+	}
+}
+
+func TestUpdateOpenClawAgentPreservesSupportedSubagentAllowlist(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	dir := t.TempDir()
+	cfg := &config.Config{OpenClawDir: dir}
+	writeJSON(t, filepath.Join(dir, "openclaw.json"), map[string]interface{}{
+		"agents": map[string]interface{}{
+			"default": "main",
+			"list": []interface{}{
+				map[string]interface{}{"id": "main", "default": true},
+				map[string]interface{}{
+					"id":   "work",
+					"name": "Work",
+					"subagents": map[string]interface{}{
+						"allowAgents": []interface{}{"research"},
+					},
+				},
+			},
+		},
+	})
+
+	r := gin.New()
+	r.PUT("/openclaw/agents/:id", UpdateOpenClawAgent(cfg))
+	req := httptest.NewRequest(http.MethodPut, "/openclaw/agents/work", bytes.NewReader([]byte(`{"name":"Renamed Work","subagents":{"allowAgents":["reviewer","*"]}}`)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	saved, err := cfg.ReadOpenClawJSON()
+	if err != nil {
+		t.Fatalf("read openclaw.json: %v", err)
+	}
+	agents, _ := saved["agents"].(map[string]interface{})
+	list, _ := agents["list"].([]interface{})
+	var workItem map[string]interface{}
+	for _, raw := range list {
+		item, _ := raw.(map[string]interface{})
+		if strings.TrimSpace(getString(item, "id")) == "work" {
+			workItem = item
+			break
+		}
+	}
+	if got := strings.TrimSpace(getString(workItem, "name")); got != "Renamed Work" {
+		t.Fatalf("expected name update to be saved, got %q", got)
+	}
+	subagents, _ := workItem["subagents"].(map[string]interface{})
+	allowAgents, _ := subagents["allowAgents"].([]interface{})
+	if len(allowAgents) != 2 || strings.TrimSpace(toString(allowAgents[0])) != "reviewer" || strings.TrimSpace(toString(allowAgents[1])) != "*" {
+		t.Fatalf("expected supported subagents.allowAgents to be preserved, got %#v", subagents["allowAgents"])
 	}
 }
 

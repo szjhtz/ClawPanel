@@ -20,6 +20,8 @@ import (
 //     danger-full-access），需要迁移为当前 OpenClaw sandbox schema。
 //  5. 旧版面板曾错误写入 agents.list[].contextTokens / compaction，
 //     但当前 OpenClaw schema 不支持单 Agent 级上下文覆盖，需要清理。
+//  6. 旧版 Agent 页面曾把 tools.agentToAgent / tools.sessions.visibility 写到
+//     agents.list[].tools 下，但当前 OpenClaw 仅支持全局 tools 配置，需要清理。
 func NormalizeOpenClawConfig(cfg map[string]interface{}) bool {
 	return normalizeOpenClawConfig(cfg, "")
 }
@@ -152,6 +154,15 @@ func normalizeOpenClawConfig(cfg map[string]interface{}, openClawDir string) boo
 						changed = true
 					}
 				}
+				if tools, ok := item["tools"].(map[string]interface{}); ok && tools != nil {
+					if stripUnsupportedPerAgentToolOverrides(tools) {
+						changed = true
+					}
+					if len(tools) == 0 {
+						delete(item, "tools")
+						changed = true
+					}
+				}
 			}
 		}
 	}
@@ -196,6 +207,20 @@ func normalizeOpenClawConfig(cfg map[string]interface{}, openClawDir string) boo
 		}
 	}
 
+	return changed
+}
+
+func stripUnsupportedPerAgentToolOverrides(tools map[string]interface{}) bool {
+	if tools == nil {
+		return false
+	}
+	changed := false
+	for _, key := range []string{"agentToAgent", "sessions"} {
+		if _, ok := tools[key]; ok {
+			delete(tools, key)
+			changed = true
+		}
+	}
 	return changed
 }
 

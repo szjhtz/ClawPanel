@@ -561,6 +561,56 @@ func TestWriteOpenClawJSONNormalizesLegacyPanelFields(t *testing.T) {
 	}
 }
 
+func TestWriteOpenClawJSONDropsUnsupportedPerAgentToolOverrides(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	cfg := &Config{OpenClawDir: dir}
+
+	input := map[string]interface{}{
+		"agents": map[string]interface{}{
+			"list": []interface{}{
+				map[string]interface{}{
+					"id": "work",
+					"tools": map[string]interface{}{
+						"profile": "coding",
+						"agentToAgent": map[string]interface{}{
+							"enabled": true,
+							"allow":   []interface{}{"main"},
+						},
+						"sessions": map[string]interface{}{
+							"visibility": "all",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if err := cfg.WriteOpenClawJSON(input); err != nil {
+		t.Fatalf("WriteOpenClawJSON failed: %v", err)
+	}
+
+	saved, err := cfg.ReadOpenClawJSON()
+	if err != nil {
+		t.Fatalf("ReadOpenClawJSON failed: %v", err)
+	}
+
+	agents, _ := saved["agents"].(map[string]interface{})
+	list, _ := agents["list"].([]interface{})
+	item, _ := list[0].(map[string]interface{})
+	tools, _ := item["tools"].(map[string]interface{})
+	if got, _ := tools["profile"].(string); got != "coding" {
+		t.Fatalf("expected supported per-agent tools.profile to be preserved, got %q", got)
+	}
+	if _, ok := tools["agentToAgent"]; ok {
+		t.Fatalf("expected unsupported per-agent tools.agentToAgent to be dropped")
+	}
+	if _, ok := tools["sessions"]; ok {
+		t.Fatalf("expected unsupported per-agent tools.sessions to be dropped")
+	}
+}
+
 func TestWriteOpenClawJSONKeepsFeishuDefaultAccountFirstInFile(t *testing.T) {
 	t.Parallel()
 

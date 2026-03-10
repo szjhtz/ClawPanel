@@ -838,6 +838,13 @@ func stripUnsupportedAgentContextOverrides(agent map[string]interface{}) {
 	}
 	delete(agent, "contextTokens")
 	delete(agent, "compaction")
+	if tools, ok := agent["tools"].(map[string]interface{}); ok && tools != nil {
+		delete(tools, "agentToAgent")
+		delete(tools, "sessions")
+		if len(tools) == 0 {
+			delete(agent, "tools")
+		}
+	}
 }
 
 func extractAgentIdentityMap(agent map[string]interface{}) map[string]interface{} {
