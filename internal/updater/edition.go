@@ -2,6 +2,7 @@ package updater
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 )
 
@@ -48,4 +49,44 @@ func (c editionConfig) assetPrefix(version string) string {
 		return fmt.Sprintf("clawpanel-lite-core-v%s", version)
 	}
 	return fmt.Sprintf("clawpanel-v%s", version)
+}
+
+func (c editionConfig) isLiteFullPackage() bool {
+	return c.Edition == "lite"
+}
+
+func (c editionConfig) binaryAssetName(version, platformKey string) string {
+	prefix := "clawpanel"
+	if c.Edition == "lite" {
+		prefix = "clawpanel-lite"
+	}
+	name := fmt.Sprintf("%s-v%s-%s", prefix, version, strings.ReplaceAll(platformKey, "_", "-"))
+	if runtime.GOOS == "windows" || strings.HasPrefix(platformKey, "windows_") {
+		name += ".exe"
+	}
+	return name
+}
+
+func (c editionConfig) liteCoreAssetName(version, platformKey string) string {
+	if platformKey != "linux_amd64" {
+		return ""
+	}
+	return fmt.Sprintf("clawpanel-lite-core-v%s-linux-amd64.tar.gz", version)
+}
+
+func (c editionConfig) updateAssetName(version, platformKey string) string {
+	if c.isLiteFullPackage() {
+		return c.liteCoreAssetName(version, platformKey)
+	}
+	return c.binaryAssetName(version, platformKey)
+}
+
+func (c editionConfig) matchUpdateAsset(version string, releaseAssetName string) (string, bool) {
+	assetName := strings.TrimSpace(releaseAssetName)
+	for _, platformKey := range []string{"linux_amd64", "linux_arm64", "darwin_amd64", "darwin_arm64", "windows_amd64"} {
+		if expected := c.updateAssetName(version, platformKey); expected != "" && assetName == expected {
+			return platformKey, true
+		}
+	}
+	return "", false
 }

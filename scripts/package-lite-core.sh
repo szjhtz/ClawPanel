@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-VERSION=${1:-${VERSION:-0.1.0-alpha}}
+VERSION=${1:-${VERSION:-0.1.4}}
 OUTPUT_DIR=${OUTPUT_DIR:-"$ROOT_DIR/release/lite/v$VERSION"}
 STAGE_DIR=$(mktemp -d)
 
@@ -71,6 +71,8 @@ if [[ -d "$PLUGIN_ROOT" ]]; then
     fi
   done
 fi
+
+rm -rf "$STAGE_DIR/.plugin-build"
 
 cat > "$STAGE_DIR/data/openclaw-config/openclaw.json" <<'EOF'
 {

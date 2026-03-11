@@ -21,7 +21,7 @@ const KNOWN_PROVIDERS: { id: string; name: string; nameZh?: string; baseUrl: str
   { id: 'hunyuan', name: 'Hunyuan', nameZh: '混元（腾讯）', baseUrl: 'https://api.hunyuan.cloud.tencent.com/v1', apiKeyUrl: 'https://console.cloud.tencent.com/cam/capi', models: ['hunyuan-pro', 'hunyuan-standard', 'hunyuan-lite', 'hunyuan-vision'], category: 'cn' },
   { id: 'zhipu', name: 'Zhipu AI', nameZh: '智谱清言（GLM）', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', apiKeyUrl: 'https://open.bigmodel.cn/usercenter/apikeys', models: ['glm-4-plus', 'glm-4', 'glm-4-flash', 'glm-4v-plus'], category: 'cn' },
   { id: 'yi', name: 'Yi / Lingyiwanwu', nameZh: '零一万物', baseUrl: 'https://api.lingyiwanwu.com/v1', apiKeyUrl: 'https://platform.lingyiwanwu.com/apikeys', models: ['yi-large', 'yi-medium', 'yi-small', 'yi-vision'], category: 'cn' },
-  { id: 'minimax', name: 'MiniMax', nameZh: 'MiniMax', baseUrl: 'https://api.minimax.chat/v1', apiKeyUrl: 'https://platform.minimaxi.com/user-center/basic-information/interface-key', models: ['MiniMax-Text-01', 'abab6.5s-chat', 'abab5.5-chat'], category: 'cn' },
+  { id: 'minimax', name: 'MiniMax', nameZh: 'MiniMax', baseUrl: 'https://api.minimaxi.com/anthropic/v1', apiType: 'anthropic-messages', apiKeyUrl: 'https://platform.minimaxi.com/user-center/basic-information/interface-key', models: ['MiniMax-M2.5'], category: 'cn' },
   { id: 'spark', name: 'Spark', nameZh: '星火（讯飞）', baseUrl: 'https://spark-api-open.xf-yun.com/v1', apiKeyUrl: 'https://console.xfyun.cn/services/bm35', models: ['spark-pro-128k', 'spark-lite', 'spark-max'], category: 'cn' },
   // === 国际主流 ===
   { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', apiKeyUrl: 'https://platform.openai.com/api-keys', models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o1', 'o1-mini', 'o3-mini'], category: 'intl' },
@@ -51,6 +51,10 @@ type CfgField = {
   max?: number;
   integer?: boolean;
 };
+
+function createEmptyProviderModel() {
+  return { id: '', name: '', contextWindow: 128000, maxTokens: 8192 };
+}
 
 function cloneConfig<T>(value: T): T {
   return JSON.parse(JSON.stringify(value ?? {}));
@@ -653,7 +657,7 @@ export default function SystemConfig() {
                           baseUrl: kp.baseUrl,
                           apiKey: '',
                           api: kp.apiType || 'openai-completions',
-                          models: kp.models.map(m => ({ id: m, name: m, contextWindow: 128000, maxTokens: 8192 })),
+                          models: [createEmptyProviderModel()],
                         };
                         });
                       }} className={`px-2 py-0.5 text-[10px] font-medium rounded-md border transition-colors ${alreadyAdded ? 'opacity-40 cursor-not-allowed bg-gray-50 dark:bg-gray-800 text-gray-400 border-gray-200 dark:border-gray-700' : color}`}
@@ -675,7 +679,7 @@ export default function SystemConfig() {
                 updateConfig((clone: any) => {
                   if (!clone.models) clone.models = {};
                   if (!clone.models.providers) clone.models.providers = {};
-                  clone.models.providers[id] = { baseUrl: '', apiKey: '', api: 'openai-completions', models: [] };
+                  clone.models.providers[id] = { baseUrl: '', apiKey: '', api: 'openai-completions', models: [createEmptyProviderModel()] };
                 });
               }} className={`${modern ? 'page-modern-action px-3 py-1.5 text-xs font-medium' : 'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-violet-50 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 hover:bg-violet-100 dark:hover:bg-violet-900/50 transition-colors'}`}>
                 <Plus size={14} />{i18n.sysConfig.addProvider}
@@ -1589,18 +1593,31 @@ function PanelUpdateSection() {
   const [updateHistory, setUpdateHistory] = useState<any[]>([]);
   const [showHistory, setShowHistory] = useState(false);
 
-  useEffect(() => {
-    api.getPanelVersion().then(r => {
+  const loadPanelVersion = async () => {
+    try {
+      const r = await api.getPanelVersion();
       if (r.ok) {
         setPanelVersion(r.version);
         setEdition(r.edition || 'pro');
       }
-    }).catch(() => {});
+    } catch {}
+  };
+
+  useEffect(() => {
+    loadPanelVersion();
+    const onFocus = () => { loadPanelVersion(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
   }, []);
 
   const checkPanelUpdate = async () => {
     setCheckingPanel(true);
     try {
+      await loadPanelVersion();
       const r = await api.checkPanelUpdate();
       if (r.ok) setPanelUpdateInfo(r);
       else setPanelUpdateInfo({ error: r.error || '检查失败' });
@@ -1630,6 +1647,7 @@ function PanelUpdateSection() {
       <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
         <Box size={16} className="text-blue-500" /> {edition === 'lite' ? 'ClawPanel Lite 版本更新' : 'ClawPanel 版本更新'}
         <span className="text-[10px] font-mono text-gray-400 bg-gray-100 dark:bg-gray-900 px-2 py-0.5 rounded ml-1">{panelVersion || '...'}</span>
+        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${edition === 'lite' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' : 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300'}`}>{edition === 'lite' ? 'Lite 版' : 'Pro 版'}</span>
         <span className="text-[10px] text-gray-400 ml-auto">🛡️ 独立更新工具</span>
       </h3>
 
@@ -1639,7 +1657,7 @@ function PanelUpdateSection() {
             <Box size={20} className="text-blue-600 dark:text-blue-300" />
           </div>
           <div>
-            <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">当前版本</p>
+            <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">当前版本 · {edition === 'lite' ? 'Lite' : 'Pro'}</p>
             <p className="text-base font-bold text-gray-900 dark:text-white font-mono mt-0.5">{panelVersion || '加载中...'}</p>
           </div>
         </div>
@@ -1702,6 +1720,12 @@ function PanelUpdateSection() {
             <AlertTriangle size={14} className="shrink-0" />
             <span>发现新版本 <strong>{panelUpdateInfo.latestVersion}</strong>（发布于 {panelUpdateInfo.releaseTime ? new Date(panelUpdateInfo.releaseTime).toLocaleString('zh-CN') : '-'}）</span>
           </div>
+          {edition === 'lite' && (
+            <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-xs text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900/30">
+              <Shield size={14} className="shrink-0" />
+              <span>Lite 面板内更新会下载当前版本对应的整包，自动同步面板、内置 OpenClaw 与预置插件，同时保留你的现有 data 目录与通道配置。</span>
+            </div>
+          )}
           <div className="bg-gray-50 dark:bg-gray-900/50 rounded-xl p-4 border border-gray-100 dark:border-gray-800 text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap max-h-48 overflow-y-auto leading-relaxed">
             {panelUpdateInfo.releaseNote}
           </div>
