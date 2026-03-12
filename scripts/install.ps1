@@ -45,6 +45,7 @@ try {
 }
 
 $BINARY_NAME = "clawpanel-v${VERSION}-windows-amd64.exe"
+$LocalBinary = $env:LOCAL_BINARY
 $DownloadSource = if ($env:DOWNLOAD_SOURCE) { $env:DOWNLOAD_SOURCE } else { $null }
 
 if (-not $DownloadSource) {
@@ -108,12 +109,17 @@ Step 2 $TOTAL "下载 ClawPanel v$VERSION..."
 $downloadUrl = if ($DownloadSource -eq "github") { "https://github.com/$REPO/releases/download/${TAG_PREFIX}${VERSION}/$BINARY_NAME" } else { "$GITEE_RELEASE_BASE/${TAG_PREFIX}${VERSION}/$BINARY_NAME" }
 $fallbackUrl = if ($DownloadSource -eq "github") { "$GITEE_RELEASE_BASE/${TAGPrefix}${VERSION}/$BINARY_NAME" } else { "https://github.com/$REPO/releases/download/${TAGPrefix}${VERSION}/$BINARY_NAME" }
 $targetPath = "$INSTALL_DIR\clawpanel.exe"
-if ($DownloadSource -eq 'github') {
+if ($LocalBinary) {
+    if (-not (Test-Path $LocalBinary)) { Err "指定的本地构建包不存在: $LocalBinary" }
+    $targetPath = "$InstallDir\clawpanel.exe"
+    Copy-Item -Path $LocalBinary -Destination $targetPath -Force
+    Info "已使用当前目录中的本地 Pro 构建包进行安装。"
+} elseif ($DownloadSource -eq 'github') {
     Info "已选择 GitHub（中国香港及境外服务器推荐），失败时自动回退到 Gitee。"
 } else {
     Info "已选择 Gitee（中国大陆服务器推荐），失败时自动回退到 GitHub。"
 }
-Info "下载地址: $downloadUrl"
+if (-not $LocalBinary) { Info "下载地址: $downloadUrl" }
 
 try {
     # 停止旧服务
@@ -122,10 +128,12 @@ try {
 
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     $ProgressPreference = 'SilentlyContinue'
-    try {
-        Invoke-WebRequest -Uri $downloadUrl -OutFile $targetPath -UseBasicParsing
-    } catch {
-        Invoke-WebRequest -Uri $fallbackUrl -OutFile $targetPath -UseBasicParsing
+    if (-not $LocalBinary) {
+        try {
+            Invoke-WebRequest -Uri $downloadUrl -OutFile $targetPath -UseBasicParsing
+        } catch {
+            Invoke-WebRequest -Uri $fallbackUrl -OutFile $targetPath -UseBasicParsing
+        }
     }
     $fileSize = [math]::Round((Get-Item $targetPath).Length / 1MB, 1)
     Log "下载完成 (${fileSize} MB)"

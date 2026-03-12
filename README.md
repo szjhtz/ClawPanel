@@ -339,6 +339,34 @@ clawpanel-windows-amd64.exe
 > [!WARNING]
 > 手动运行不会注册系统服务，关闭终端后服务会停止。推荐使用一键安装。
 
+### 方式二补充：手动下载构建包后，在当前目录直接安装
+
+如果你已经手动下载好了对应平台的构建包，并且当前终端就在该文件所在目录，可以直接运行下面的“仅安装”脚本；脚本会先在当前目录检测匹配的平台构建包，再执行安装。
+
+**ClawPanel Pro（Linux / macOS）**
+
+```bash
+curl -fsSL https://gitee.com/zxy000006/ClawPanel/raw/main/scripts/install-local-pro.sh -o install-local-pro.sh && bash install-local-pro.sh
+```
+
+**ClawPanel Pro（Windows，PowerShell）**
+
+```powershell
+iwr https://gitee.com/zxy000006/ClawPanel/raw/main/scripts/install-local-pro.ps1 -OutFile install-local-pro.ps1; powershell -ExecutionPolicy Bypass -File .\install-local-pro.ps1
+```
+
+**ClawPanel Lite（Linux / macOS）**
+
+```bash
+curl -fsSL https://gitee.com/zxy000006/ClawPanel/raw/main/scripts/install-local-lite.sh -o install-local-lite.sh && bash install-local-lite.sh
+```
+
+**ClawPanel Lite（Windows，PowerShell）**
+
+```powershell
+iwr https://gitee.com/zxy000006/ClawPanel/raw/main/scripts/install-local-lite.ps1 -OutFile install-local-lite.ps1; powershell -ExecutionPolicy Bypass -File .\install-local-lite.ps1
+```
+
 ### 方式三：从源码构建
 
 ```bash

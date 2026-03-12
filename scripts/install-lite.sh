@@ -163,7 +163,21 @@ download_with_selected_source() {
 
 choose_download_source
 
-VERSION=${VERSION:-$(resolve_latest_version "$DOWNLOAD_SOURCE")}
+LOCAL_PACKAGE_PATH="${LOCAL_PACKAGE:-}"
+
+if [[ -n "$LOCAL_PACKAGE_PATH" ]]; then
+  if [[ ! -f "$LOCAL_PACKAGE_PATH" ]]; then
+    err "指定的本地 Lite 构建包不存在：$LOCAL_PACKAGE_PATH"
+  fi
+  base_name=$(basename "$LOCAL_PACKAGE_PATH")
+  if [[ "$base_name" =~ ^clawpanel-lite-core-v([0-9][0-9A-Za-z._-]*)-linux-amd64\.tar\.gz$ ]]; then
+    VERSION="${BASH_REMATCH[1]}"
+  fi
+else
+  choose_download_source
+  VERSION=${VERSION:-$(resolve_latest_version "$DOWNLOAD_SOURCE")}
+fi
+
 VERSION=${VERSION:-$DEFAULT_VERSION}
 
 PACKAGE_NAME="clawpanel-lite-core-v${VERSION}-linux-amd64.tar.gz"
@@ -187,12 +201,16 @@ mkdir -p "$INSTALL_DIR"
 log "目录已就绪: $INSTALL_DIR"
 
 step 2 $TOTAL_STEPS "下载 ClawPanel Lite v${VERSION}"
-if [[ "$DOWNLOAD_SOURCE" == "github" ]]; then
+if [[ -n "$LOCAL_PACKAGE_PATH" ]]; then
+  cp -f "$LOCAL_PACKAGE_PATH" "$TMP_DIR/$PACKAGE_NAME"
+  DOWNLOAD_SOURCE_ACTUAL="local"
+  info "已使用当前目录中的本地 Lite 构建包进行安装。"
+elif [[ "$DOWNLOAD_SOURCE" == "github" ]]; then
   info "已选择 GitHub（中国香港及境外服务器推荐），失败时自动回退到 Gitee。"
 else
   info "已选择 Gitee（中国大陆服务器推荐），失败时自动回退到 GitHub。"
+  download_with_selected_source "$DOWNLOAD_SOURCE" "$PACKAGE_NAME" "$TMP_DIR/$PACKAGE_NAME" || err "GitHub 和 Gitee 均下载失败，请检查网络后重试。"
 fi
-download_with_selected_source "$DOWNLOAD_SOURCE" "$PACKAGE_NAME" "$TMP_DIR/$PACKAGE_NAME" || err "GitHub 和 Gitee 均下载失败，请检查网络后重试。"
 log "下载完成 (${DOWNLOAD_SOURCE_ACTUAL})"
 
 step 3 $TOTAL_STEPS "部署 Lite 运行环境"

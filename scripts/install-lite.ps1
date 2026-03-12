@@ -28,6 +28,7 @@ function Download-File($Url, $Target) {
 }
 
 $DownloadSource = if ($env:DOWNLOAD_SOURCE) { $env:DOWNLOAD_SOURCE } else { $null }
+$LocalPackage = $env:LOCAL_PACKAGE
 if (-not $DownloadSource) {
   Write-Host "  [Lite] 请选择下载线路：" -ForegroundColor Cyan
   Write-Host "    1) GitHub      中国香港及境外服务器推荐" -ForegroundColor White
@@ -43,12 +44,18 @@ $PrimaryUrl = if ($DownloadSource -eq "github") { "https://github.com/$Repo/rele
 $FallbackUrl = if ($DownloadSource -eq "github") { "$GiteeReleaseBase/${TagPrefix}${Version}/$PackageName" } else { "https://github.com/$Repo/releases/download/${TagPrefix}${Version}/$PackageName" }
 
 $tmp = Join-Path $env:TEMP $PackageName
-if ($DownloadSource -eq 'github') {
+if ($LocalPackage) {
+  if (-not (Test-Path $LocalPackage)) { Write-Error "指定的本地 Lite 构建包不存在: $LocalPackage"; exit 1 }
+  Copy-Item -Path $LocalPackage -Destination $tmp -Force
+  Write-Host "  [Lite] 已使用当前目录中的本地 Lite 构建包进行安装。" -ForegroundColor Cyan
+} elseif ($DownloadSource -eq 'github') {
   Write-Host "  [Lite] 已选择 GitHub（中国香港及境外服务器推荐），失败时自动回退到 Gitee。" -ForegroundColor Cyan
 } else {
   Write-Host "  [Lite] 已选择 Gitee（中国大陆服务器推荐），失败时自动回退到 GitHub。" -ForegroundColor Cyan
 }
-try { Download-File $PrimaryUrl $tmp } catch { Download-File $FallbackUrl $tmp }
+if (-not $LocalPackage) {
+  try { Download-File $PrimaryUrl $tmp } catch { Download-File $FallbackUrl $tmp }
+}
 
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 Get-Service $ServiceName -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue

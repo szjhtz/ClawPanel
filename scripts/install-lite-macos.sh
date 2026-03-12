@@ -100,8 +100,18 @@ download_file() { curl --connect-timeout 10 --max-time 300 --retry 2 --retry-del
 choose_download_source
 [[ "$(uname -s)" == "Darwin" ]] || err "install-lite-macos.sh 只能在 macOS 上运行；你当前系统是 $(uname -s)。Linux 请使用 install-lite.sh。"
 ARCH=$(detect_arch)
-VERSION=${VERSION:-$( [[ "$DOWNLOAD_SOURCE" == github ]] && get_latest_version_from_github || get_latest_version_from_gitee )}
-VERSION=${VERSION:-$( [[ "$DOWNLOAD_SOURCE" == github ]] && get_latest_version_from_gitee || get_latest_version_from_github )}
+LOCAL_PACKAGE_PATH="${LOCAL_PACKAGE:-}"
+if [[ -n "$LOCAL_PACKAGE_PATH" ]]; then
+  [[ -f "$LOCAL_PACKAGE_PATH" ]] || err "指定的本地 Lite 构建包不存在：$LOCAL_PACKAGE_PATH"
+  base_name=$(basename "$LOCAL_PACKAGE_PATH")
+  if [[ "$base_name" =~ ^clawpanel-lite-core-v([0-9][0-9A-Za-z._-]*)-darwin-${ARCH}\.tar\.gz$ ]]; then
+    VERSION="${BASH_REMATCH[1]}"
+  fi
+else
+  choose_download_source
+  VERSION=${VERSION:-$( [[ "$DOWNLOAD_SOURCE" == github ]] && get_latest_version_from_github || get_latest_version_from_gitee )}
+  VERSION=${VERSION:-$( [[ "$DOWNLOAD_SOURCE" == github ]] && get_latest_version_from_gitee || get_latest_version_from_github )}
+fi
 VERSION=${VERSION:-$DEFAULT_VERSION}
 PACKAGE_NAME="clawpanel-lite-core-v${VERSION}-darwin-${ARCH}.tar.gz"
 
@@ -127,12 +137,15 @@ info "目标架构: darwin/${ARCH}"
 echo ""
 
 step 1 $TOTAL_STEPS "下载 ClawPanel Lite v${VERSION}"
-if [[ "$DOWNLOAD_SOURCE" == github ]]; then
+if [[ -n "$LOCAL_PACKAGE_PATH" ]]; then
+  cp -f "$LOCAL_PACKAGE_PATH" "$TMP_DIR/$PACKAGE_NAME"
+  info "已使用当前目录中的本地 Lite 构建包进行安装。"
+elif [[ "$DOWNLOAD_SOURCE" == github ]]; then
   info "已选择 GitHub（中国香港及境外服务器推荐），失败时自动回退到 Gitee。"
 else
   info "已选择 Gitee（中国大陆服务器推荐），失败时自动回退到 GitHub。"
+  download_file "$PRIMARY_URL" "$TMP_DIR/$PACKAGE_NAME" || download_file "$SECONDARY_URL" "$TMP_DIR/$PACKAGE_NAME" || err "下载失败"
 fi
-download_file "$PRIMARY_URL" "$TMP_DIR/$PACKAGE_NAME" || download_file "$SECONDARY_URL" "$TMP_DIR/$PACKAGE_NAME" || err "下载失败"
 log "下载完成：$PACKAGE_NAME"
 
 step 2 $TOTAL_STEPS "部署 Lite 运行环境"
