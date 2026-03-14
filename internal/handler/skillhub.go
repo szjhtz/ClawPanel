@@ -92,13 +92,14 @@ const (
 	skillHubFetchTimeout       = 25 * time.Second
 	skillHubRetryBackoff       = 5 * time.Minute
 	skillHubCDNBase            = "https://cloudcache.tencentcs.com/qcloud/tea/app/data/"
-	skillHubDefaultInstallKit  = "https://skillhub-1251783334.cos.ap-guangzhou.myqcloud.com/install/latest.tar.gz"
+	skillHubDefaultInstallKit  = "https://skillhub-1388575217.cos.ap-guangzhou.myqcloud.com/install/latest.tar.gz"
 	skillHubInstallGuideURL    = "https://skillhub-1388575217.cos.ap-guangzhou.myqcloud.com/install/skillhub.md"
-	skillHubInstallShellURL    = "https://skillhub-1388575217.cos.ap-guangzhou.myqcloud.com/install/install.sh"
 	skillHubInstallTimeout     = 5 * time.Minute
 	skillHubInstallMaxBytes    = 32 << 20 // 32MB
 	skillHubCommandOutputLimit = 4096
 )
+
+var skillHubInstallShellURL = "https://skillhub-1388575217.cos.ap-guangzhou.myqcloud.com/install/install.sh"
 
 var skillHubJSONHashRe = regexp.MustCompile(`skills\.([0-9a-f]+)\.json`)
 
@@ -630,22 +631,24 @@ func resolveSkillHubBinary() (string, error) {
 }
 
 func installSkillHubCLI(ctx context.Context) (string, string, error) {
-	// 优先尝试 tar.gz 安装包方式
-	binPath, output, err := installSkillHubCLIViaKit(ctx)
-	if err == nil {
-		return binPath, output, nil
-	}
-	kitErr := err
-
-	// tar.gz 失败时，在 Unix 系统上尝试官方 install.sh 脚本
+	// Unix 系统优先使用官方 install.sh 脚本
 	if runtime.GOOS != "windows" {
-		binPath, output, err = installSkillHubCLIViaShell(ctx)
+		binPath, output, err := installSkillHubCLIViaShell(ctx)
 		if err == nil {
 			return binPath, output, nil
 		}
-		return "", "", fmt.Errorf("install via kit: %v; install via shell: %v", kitErr, err)
+		shellErr := err
+
+		// install.sh 失败时回退到 tar.gz 安装包方式
+		binPath, output, err = installSkillHubCLIViaKit(ctx)
+		if err == nil {
+			return binPath, output, nil
+		}
+		return "", "", fmt.Errorf("install via shell: %v; install via kit: %v", shellErr, err)
 	}
-	return "", output, kitErr
+
+	// Windows 只支持 tar.gz 安装包方式
+	return installSkillHubCLIViaKit(ctx)
 }
 
 // installSkillHubCLIViaShell 通过官方 install.sh 脚本安装（Unix only）
