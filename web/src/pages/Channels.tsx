@@ -462,18 +462,31 @@ const CHANNEL_REQUIRED_FIELDS: Record<string, string[]> = {
   matrix: ['homeserverUrl', 'accessToken'],
   twitch: ['username', 'oauthToken', 'channels'],
 };
-// 飞书双版本：读取当前启用的变体
+// 飞书官方版插件 ID 集合（优先新 ID）
+const FEISHU_OFFICIAL_IDS = ['openclaw-lark', 'feishu-openclaw-plugin'] as const;
+// 所有飞书插件 ID（含社区版）
+const FEISHU_ALL_IDS = ['openclaw-lark', 'feishu-openclaw-plugin', 'feishu'] as const;
+
+// 飞书版本：读取当前启用的变体
 function getActiveFeishuVariant(ocConfig: any): 'official' | 'clawteam' | null {
   const entries = ocConfig?.plugins?.entries || {};
-  if (entries['feishu-openclaw-plugin']?.enabled) return 'official';
+  for (const id of FEISHU_OFFICIAL_IDS) {
+    if (entries[id]?.enabled) return 'official';
+  }
   if (entries['feishu']?.enabled) return 'clawteam';
   return null;
 }
 
-// 飞书双版本：获取当前活跃的 plugin entry ID
+// 飞书版本：获取当前活跃的 plugin entry ID
 function getFeishuPluginEntryId(ocConfig: any): string {
-  const variant = getActiveFeishuVariant(ocConfig);
-  if (variant === 'official') return 'feishu-openclaw-plugin';
+  const entries = ocConfig?.plugins?.entries || {};
+  for (const id of FEISHU_ALL_IDS) {
+    if (entries[id]?.enabled) return id;
+  }
+  // 未启用时返回有 entry 的第一个
+  for (const id of FEISHU_ALL_IDS) {
+    if (entries[id]) return id;
+  }
   return 'feishu';
 }
 
@@ -490,7 +503,7 @@ function getChannelStatus(ch: ChannelDef, ocConfig: any): 'enabled' | 'configure
   const pluginConf = ocConfig?.plugins?.entries?.[ch.id] || {};
   // 飞书特殊处理：任一变体 enabled 即视为 enabled
   const isEnabled = ch.id === 'feishu'
-    ? (pluginConf.enabled || ocConfig?.plugins?.entries?.['feishu-openclaw-plugin']?.enabled || chConf.enabled)
+    ? (pluginConf.enabled || FEISHU_OFFICIAL_IDS.some(id => ocConfig?.plugins?.entries?.[id]?.enabled) || chConf.enabled)
     : (chConf.enabled || pluginConf.enabled);
   // Check if any config field has a value
   const hasConfig = ch.configFields.some(f => {
@@ -718,7 +731,7 @@ export default function Channels() {
   const isPluginInstalled = (channelId: string) => {
     // 飞书特殊处理：任一版本已安装即视为已安装
     if (channelId === 'feishu') {
-      return installedPlugins.some((p: any) => p.id === 'feishu' || p.id === 'feishu-openclaw-plugin');
+      return installedPlugins.some((p: any) => (FEISHU_ALL_IDS as readonly string[]).includes(p.id));
     }
     if (channelId === 'wecom') {
       return installedPlugins.some((p: any) => p.id === 'wecom' || p.id === 'wecom-openclaw-plugin');
@@ -769,7 +782,7 @@ export default function Channels() {
       const chConf = ocConfig?.channels?.[ch.id] || {};
       const pluginConf = ocConfig?.plugins?.entries?.[ch.id] || {};
       if (ch.id === 'feishu') {
-        return chConf.enabled || pluginConf.enabled || ocConfig?.plugins?.entries?.['feishu-openclaw-plugin']?.enabled;
+        return chConf.enabled || pluginConf.enabled || FEISHU_OFFICIAL_IDS.some(id => ocConfig?.plugins?.entries?.[id]?.enabled);
       }
       return chConf.enabled || pluginConf.enabled;
     });
@@ -792,7 +805,7 @@ export default function Channels() {
       const chConf = ocConfig?.channels?.[ch.id] || {};
       const pluginConf = ocConfig?.plugins?.entries?.[ch.id] || {};
       if (ch.id === 'feishu') {
-        return chConf.enabled || pluginConf.enabled || ocConfig?.plugins?.entries?.['feishu-openclaw-plugin']?.enabled;
+        return chConf.enabled || pluginConf.enabled || FEISHU_OFFICIAL_IDS.some(id => ocConfig?.plugins?.entries?.[id]?.enabled);
       }
       return chConf.enabled || pluginConf.enabled;
     });
@@ -1067,7 +1080,7 @@ export default function Channels() {
 
   const isChannelEnabled = (channelId: string) => {
     if (channelId === 'feishu') {
-      return ocPlugins[channelId]?.enabled || ocPlugins['feishu-openclaw-plugin']?.enabled || ocChannels[channelId]?.enabled || false;
+      return ocPlugins[channelId]?.enabled || FEISHU_OFFICIAL_IDS.some(id => ocPlugins[id]?.enabled) || ocChannels[channelId]?.enabled || false;
     }
     return ocChannels[channelId]?.enabled || ocPlugins[channelId]?.enabled || false;
   };

@@ -94,6 +94,7 @@ const (
 	skillHubCDNBase            = "https://cloudcache.tencentcs.com/qcloud/tea/app/data/"
 	skillHubDefaultInstallKit  = "https://skillhub-1251783334.cos.ap-guangzhou.myqcloud.com/install/latest.tar.gz"
 	skillHubInstallGuideURL    = "https://skillhub-1388575217.cos.ap-guangzhou.myqcloud.com/install/skillhub.md"
+	skillHubInstallShellURL    = "https://skillhub-1388575217.cos.ap-guangzhou.myqcloud.com/install/install.sh"
 	skillHubInstallTimeout     = 5 * time.Minute
 	skillHubInstallMaxBytes    = 32 << 20 // 32MB
 	skillHubCommandOutputLimit = 4096
@@ -629,6 +630,75 @@ func resolveSkillHubBinary() (string, error) {
 }
 
 func installSkillHubCLI(ctx context.Context) (string, string, error) {
+	// 优先尝试 tar.gz 安装包方式
+	binPath, output, err := installSkillHubCLIViaKit(ctx)
+	if err == nil {
+		return binPath, output, nil
+	}
+	kitErr := err
+
+	// tar.gz 失败时，在 Unix 系统上尝试官方 install.sh 脚本
+	if runtime.GOOS != "windows" {
+		binPath, output, err = installSkillHubCLIViaShell(ctx)
+		if err == nil {
+			return binPath, output, nil
+		}
+		return "", "", fmt.Errorf("install via kit: %v; install via shell: %v", kitErr, err)
+	}
+	return "", output, kitErr
+}
+
+// installSkillHubCLIViaShell 通过官方 install.sh 脚本安装（Unix only）
+func installSkillHubCLIViaShell(ctx context.Context) (string, string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, skillHubInstallShellURL, nil)
+	if err != nil {
+		return "", "", fmt.Errorf("create install.sh request: %w", err)
+	}
+	resp, err := skillHubInstallHTTPClient.Do(req)
+	if err != nil {
+		return "", "", fmt.Errorf("download install.sh: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", "", fmt.Errorf("install.sh returned %d", resp.StatusCode)
+	}
+
+	scriptBytes, err := io.ReadAll(io.LimitReader(resp.Body, 512*1024))
+	if err != nil {
+		return "", "", fmt.Errorf("read install.sh: %w", err)
+	}
+
+	tempFile, err := os.CreateTemp("", "skillhub-install-*.sh")
+	if err != nil {
+		return "", "", fmt.Errorf("create temp install script: %w", err)
+	}
+	tempPath := tempFile.Name()
+	defer os.Remove(tempPath)
+
+	if _, err := tempFile.Write(scriptBytes); err != nil {
+		tempFile.Close()
+		return "", "", fmt.Errorf("write install script: %w", err)
+	}
+	tempFile.Close()
+
+	if err := os.Chmod(tempPath, 0o755); err != nil {
+		return "", "", fmt.Errorf("chmod install script: %w", err)
+	}
+
+	output, err := runCommandCapture(ctx, "", "bash", tempPath, "--no-skills")
+	if err != nil {
+		return "", "", wrapSkillHubCommandError("install.sh", err, output)
+	}
+
+	binPath, resolveErr := resolveSkillHubBinary()
+	if resolveErr != nil {
+		return "", output, resolveErr
+	}
+	return binPath, output, nil
+}
+
+// installSkillHubCLIViaKit 通过 tar.gz 安装包方式安装
+func installSkillHubCLIViaKit(ctx context.Context) (string, string, error) {
 	tempDir, err := os.MkdirTemp("", "clawpanel-skillhub-install-*")
 	if err != nil {
 		return "", "", fmt.Errorf("create temporary installer workspace: %w", err)
