@@ -305,8 +305,8 @@ function LayoutShell({ onLogout, napcatStatus, wechatStatus, openclawStatus, pro
                 </div>
               </div>
             ))}
-            {totalEnabledChannels > 5 && (
-              <div className="text-[10px] text-slate-400 pl-4">+{totalEnabledChannels - 5} {locale === 'zh-CN' ? '个通道' : 'more'}</div>
+            {totalEnabledChannels > connectedChannels.length && (
+              <div className="text-[10px] text-slate-400 pl-4">+{totalEnabledChannels - connectedChannels.length} {locale === 'zh-CN' ? '个通道' : 'more'}</div>
             )}
           </div>
         )}

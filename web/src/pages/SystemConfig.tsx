@@ -903,7 +903,8 @@ export default function SystemConfig() {
                                     <label className="text-[10px] text-gray-400 font-medium block mb-1">{cf.label}</label>
                                     <input type="number" step="0.01" min="0" value={(mObj.cost as any)?.[cf.key] ?? ''} onChange={e => {
                                       const cost = { ...(mObj.cost || {}), [cf.key]: e.target.value ? Number(e.target.value) : undefined };
-                                      updateModel('cost', cost);
+                                      const hasCosts = Object.keys(cost).some(k => (cost as any)[k] !== undefined);
+                                      updateModel('cost', hasCosts ? cost : undefined);
                                     }} placeholder="0.00" className="w-full px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" />
                                   </div>
                                 ))}
@@ -990,7 +991,8 @@ export default function SystemConfig() {
                                   <div className="relative">
                                     <select value={(mObj.compat as any)?.maxTokensField || ''} onChange={e => {
                                       const c = { ...(mObj.compat || {}), maxTokensField: e.target.value || undefined };
-                                      updateModel('compat', c);
+                                      const hasKeys = Object.keys(c).some(k => (c as any)[k] !== undefined);
+                                      updateModel('compat', hasKeys ? c : undefined);
                                     }} className="w-full px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 appearance-none cursor-pointer">
                                       <option value="">默认 (auto)</option>
                                       <option value="max_completion_tokens">max_completion_tokens</option>
@@ -1004,7 +1006,8 @@ export default function SystemConfig() {
                                   <div className="relative">
                                     <select value={(mObj.compat as any)?.thinkingFormat || ''} onChange={e => {
                                       const c = { ...(mObj.compat || {}), thinkingFormat: e.target.value || undefined };
-                                      updateModel('compat', c);
+                                      const hasKeys = Object.keys(c).some(k => (c as any)[k] !== undefined);
+                                      updateModel('compat', hasKeys ? c : undefined);
                                     }} className="w-full px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 appearance-none cursor-pointer">
                                       <option value="">默认 (auto)</option>
                                       <option value="openai">openai</option>
