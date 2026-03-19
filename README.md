@@ -9,8 +9,8 @@
 Go 单二进制 · React 18 · TailwindCSS · SQLite · WebSocket 实时推送 · 跨平台
 
 [![License](https://img.shields.io/badge/license-CC%20BY--NC--SA%204.0-red?style=flat-square)](LICENSE)
-[![Pro](https://img.shields.io/badge/Pro-5.2.11-violet?style=flat-square)](https://github.com/zhaoxinyi02/ClawPanel/releases)
-[![Lite](https://img.shields.io/badge/Lite-0.1.11-2563eb?style=flat-square)](https://github.com/zhaoxinyi02/ClawPanel/releases)
+[![Pro](https://img.shields.io/badge/Pro-5.2.13-violet?style=flat-square)](https://github.com/zhaoxinyi02/ClawPanel/releases)
+[![Lite](https://img.shields.io/badge/Lite-0.1.13-2563eb?style=flat-square)](https://github.com/zhaoxinyi02/ClawPanel/releases)
 [![Go](https://img.shields.io/badge/go-1.22+-00ADD8?style=flat-square&logo=go&logoColor=white)](https://go.dev)
 [![React](https://img.shields.io/badge/react-18-61DAFB?style=flat-square&logo=react&logoColor=white)](https://react.dev)
 [![CI](https://github.com/zhaoxinyi02/ClawPanel/actions/workflows/ci.yml/badge.svg)](https://github.com/zhaoxinyi02/ClawPanel/actions/workflows/ci.yml)
