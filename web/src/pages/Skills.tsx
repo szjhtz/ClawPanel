@@ -109,6 +109,8 @@ interface SkillHubStatus {
   installGuideURL?: string;
   skillInstallCommand?: string;
   error?: string;
+  missingPython?: boolean;
+  installHint?: string;
 }
 
 type SkillScopeFilter = 'all' | 'current-agent' | 'global-shared' | 'built-in' | 'plugin' | 'custom';
@@ -417,7 +419,8 @@ export default function Skills() {
         setMsg(t.skills.skillHubCliInstallSuccess);
         await loadSkillHubStatus(true);
       } else {
-        setMsg(r.error || t.skills.skillHubCliInstallFailed);
+        setMsg(r.installHint || r.error || t.skills.skillHubCliInstallFailed);
+        await loadSkillHubStatus(true);
       }
     } catch (err) {
       console.error('Failed to install SkillHub CLI:', err);
@@ -1449,6 +1452,12 @@ export default function Skills() {
 
           {skillHubError && (
             <div className="px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 rounded-lg text-sm text-red-700 dark:text-red-400">{skillHubError}</div>
+          )}
+
+          {!skillHubCliStatus?.installed && (skillHubCliStatus?.installHint || skillHubCliStatus?.error) && (
+            <div className="px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-lg text-sm text-amber-700 dark:text-amber-300">
+              {skillHubCliStatus.installHint || skillHubCliStatus.error}
+            </div>
           )}
 
           {/* Search */}

@@ -1827,7 +1827,18 @@ function PanelUpdateSection() {
     setNavigating(true);
     try {
       const r = await api.generateUpdateToken();
-      if (!r.ok) { alert('生成更新令牌失败: ' + (r.error || '')); setNavigating(false); return; }
+      if (!r.ok) {
+        const error = r.error || '';
+        if (error.includes('认证令牌无效') || error.includes('未提供认证令牌')) {
+          localStorage.removeItem('admin-token');
+          alert('登录状态已过期，请重新登录后再试更新。');
+          window.location.href = '/login';
+          return;
+        }
+        alert('生成更新令牌失败: ' + error);
+        setNavigating(false);
+        return;
+      }
       window.open(r.updaterURL, '_blank');
     } catch (e) { alert('网络错误: ' + e); }
     finally { setNavigating(false); }

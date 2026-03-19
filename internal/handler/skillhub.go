@@ -494,6 +494,10 @@ func GetSkillHubStatus(cfg *config.Config) gin.HandlerFunc {
 			resp["binPath"] = binPath
 		} else {
 			resp["error"] = err.Error()
+			if pythonErr := detectSkillHubPythonDependency(); pythonErr != nil {
+				resp["missingPython"] = true
+				resp["installHint"] = pythonErr.Error()
+			}
 		}
 		c.JSON(http.StatusOK, resp)
 	}
@@ -512,11 +516,24 @@ func InstallSkillHubCLI(cfg *config.Config) gin.HandlerFunc {
 
 		binPath, output, err := installSkillHubCLI(ctx)
 		if err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"ok": false, "error": err.Error(), "output": output})
+			resp := gin.H{"ok": false, "error": err.Error(), "output": output}
+			if pythonErr := detectSkillHubPythonDependency(); pythonErr != nil {
+				resp["missingPython"] = true
+				resp["installHint"] = pythonErr.Error()
+			}
+			c.JSON(http.StatusBadGateway, resp)
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"ok": true, "installed": true, "binPath": binPath, "output": output})
 	}
+}
+
+func detectSkillHubPythonDependency() error {
+	_, _, err := detectSkillHubPython()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // InstallSkillHubSkill runs the official `skillhub install <slug>` command inside the selected workspace.
@@ -810,9 +827,9 @@ func detectSkillHubPython() (string, []string, error) {
 		}
 	}
 	if runtime.GOOS == "windows" {
-		return "", nil, fmt.Errorf("python runtime not found; install Python or py launcher first")
+		return "", nil, fmt.Errorf("未检测到 Python 运行时；SkillHub CLI 依赖 Python。请先安装 Python 3 或 py launcher 后再试")
 	}
-	return "", nil, fmt.Errorf("python3 runtime not found")
+	return "", nil, fmt.Errorf("未检测到 Python 3 运行时；SkillHub CLI 依赖 Python。请先安装 python3 后再试")
 }
 
 func copySkillHubInstallFile(srcPath, dstPath string) error {

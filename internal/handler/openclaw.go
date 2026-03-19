@@ -61,10 +61,10 @@ func normalizeProviderAPIs(providers map[string]interface{}) {
 }
 
 var knownAPIKeyPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`nvapi-[A-Za-z0-9._\-]+`),
-	regexp.MustCompile(`sk-[A-Za-z0-9._\-]+`),
-	regexp.MustCompile(`sess-[A-Za-z0-9._\-]+`),
-	regexp.MustCompile(`AIza[0-9A-Za-z_\-]+`),
+	regexp.MustCompile(`nvapi-[A-Za-z0-9._\-=]+`),
+	regexp.MustCompile(`sk-[A-Za-z0-9._\-=]+`),
+	regexp.MustCompile(`sess-[A-Za-z0-9._\-=]+`),
+	regexp.MustCompile(`AIza[0-9A-Za-z_\-=]+`),
 }
 
 func sanitizeProviderAPIKey(raw string) string {
@@ -78,6 +78,16 @@ func sanitizeProviderAPIKey(raw string) string {
 		}
 	}
 	return raw
+}
+
+func stripTransientProviderFields(providers map[string]interface{}) {
+	for _, prov := range providers {
+		providerMap, ok := prov.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		delete(providerMap, "_note")
+	}
 }
 
 func preserveMissingMapFields(dst, src map[string]interface{}) {
@@ -283,6 +293,7 @@ func SaveModels(cfg *config.Config) gin.HandlerFunc {
 		if providers, ok := body["providers"]; ok {
 			if provMap, ok := providers.(map[string]interface{}); ok {
 				normalizeProviderAPIs(provMap)
+				stripTransientProviderFields(provMap)
 			}
 			if models, ok := ocConfig["models"].(map[string]interface{}); ok {
 				models["providers"] = providers
