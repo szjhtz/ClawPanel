@@ -386,9 +386,13 @@ func SaveChannel(cfg *config.Config, procMgr *process.Manager) gin.HandlerFunc {
 				wecom = map[string]interface{}{}
 			}
 			agent := map[string]interface{}{}
-			for _, k := range []string{"corpId", "corpSecret", "agentId", "token", "encodingAesKey"} {
+			for _, k := range []string{"corpId", "corpSecret", "agentId", "token", "encodingAesKey", "encodingAESKey"} {
 				if v, ok := body[k]; ok {
-					agent[k] = v
+					if k == "encodingAesKey" {
+						agent["encodingAESKey"] = v
+					} else {
+						agent[k] = v
+					}
 				}
 			}
 			wecom["agent"] = agent
@@ -396,8 +400,8 @@ func SaveChannel(cfg *config.Config, procMgr *process.Manager) gin.HandlerFunc {
 			if t, ok := agent["token"].(string); ok && t != "" {
 				wecom["token"] = t
 			}
-			if k, ok := agent["encodingAesKey"].(string); ok && k != "" {
-				wecom["encodingAesKey"] = k
+			if k, ok := agent["encodingAESKey"].(string); ok && k != "" {
+				wecom["encodingAESKey"] = k
 			}
 			if _, ok := wecom["enabled"]; !ok {
 				wecom["enabled"] = false
@@ -1166,6 +1170,7 @@ func ToggleChannel(cfg *config.Config, procMgr *process.Manager, napcatMon *moni
 			}
 			pe["enabled"] = req.Enabled
 			entries["wecom"] = pe
+			delete(entries, "wecom-app")
 		} else {
 			ch, _ := channels[req.ChannelID].(map[string]interface{})
 			if ch == nil {
@@ -1203,6 +1208,9 @@ func ToggleChannel(cfg *config.Config, procMgr *process.Manager, napcatMon *moni
 				}
 				pe["enabled"] = req.Enabled
 				entries[req.ChannelID] = pe
+				if req.ChannelID == "wecom" {
+					delete(entries, "wecom-app")
+				}
 			}
 		}
 		ocConfig["channels"] = channels

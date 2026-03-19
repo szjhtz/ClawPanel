@@ -26,6 +26,7 @@ var startTime = time.Now()
 func GetStatus(db *sql.DB, cfg *config.Config, procMgr *process.Manager, napcatMon *monitor.NapCatMonitor) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ocConfig, _ := cfg.ReadOpenClawJSON()
+		injectWecomVirtualChannel(cfg, ocConfig)
 
 		// 提取已启用的通道
 		channelLabels := map[string]string{
@@ -68,6 +69,9 @@ func GetStatus(db *sql.DB, cfg *config.Config, procMgr *process.Manager, napcatM
 						"openclaw-lark":          "feishu",
 					}
 					for id, conf := range entries {
+						if id == "wecom-app" {
+							continue
+						}
 						canonicalID := id
 						if alias, ok := channelAliases[id]; ok {
 							canonicalID = alias

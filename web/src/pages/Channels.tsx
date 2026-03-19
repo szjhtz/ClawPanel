@@ -401,15 +401,16 @@ const CHANNEL_DEFS: ChannelDef[] = [
       { key: 'clientId', label: 'Client ID', type: 'text', help: '钉钉应用 Client ID' },
       { key: 'clientSecret', label: 'Client Secret', type: 'password', help: '钉钉应用 Client Secret' },
     ] },
-  { id: 'wecom', label: '企业微信（智能机器人）', description: '企业微信智能机器人，长连接模式，仅需 Bot ID 与 Secret', type: 'plugin',
+  { id: 'wecom', label: '企业微信（智能机器人）', description: '企业微信智能机器人，使用回调 Token / EncodingAESKey / Webhook Path 配置', type: 'plugin',
     configFields: [
-      { key: 'botId', label: 'Bot ID', type: 'text', help: '企业微信智能机器人 Bot ID' },
-      { key: 'secret', label: 'Secret', type: 'password', help: '企业微信智能机器人 Secret' },
+      { key: 'token', label: 'Token', type: 'password', help: '企业微信回调配置中的 Token' },
+      { key: 'encodingAESKey', label: 'EncodingAESKey', type: 'password', help: '43 位字符' },
+      { key: 'webhookPath', label: 'Webhook Path', type: 'text', help: '如 /wecom' },
     ] },
   { id: 'wecom-app', label: '企业微信（自建应用）', description: '企业微信自建应用，支持更完整 API 与微信入口', type: 'plugin',
     configFields: [
       { key: 'token', label: 'Token', type: 'password', help: '企业微信回调配置中的 Token' },
-      { key: 'encodingAesKey', label: 'EncodingAESKey', type: 'password', help: '43 位字符' },
+      { key: 'encodingAESKey', label: 'EncodingAESKey', type: 'password', help: '43 位字符' },
       { key: 'corpId', label: 'Corp ID', type: 'text', help: '企业 ID' },
       { key: 'corpSecret', label: 'Corp Secret', type: 'password', help: '应用 Secret' },
       { key: 'agentId', label: 'Agent ID', type: 'text', help: '应用 Agent ID' },
@@ -453,8 +454,8 @@ const CHANNEL_REQUIRED_FIELDS: Record<string, string[]> = {
   feishu: ['appId', 'appSecret'],
   qqbot: ['appId', 'clientSecret'],
   dingtalk: ['clientId', 'clientSecret'],
-  wecom: ['botId', 'secret'],
-  'wecom-app': ['token', 'encodingAesKey', 'corpId', 'corpSecret', 'agentId'],
+  'wecom': ['token', 'encodingAESKey', 'webhookPath'],
+  'wecom-app': ['token', 'encodingAESKey', 'corpId', 'corpSecret', 'agentId'],
   msteams: ['appId', 'appPassword'],
   mattermost: ['url', 'token'],
   line: ['channelAccessToken', 'channelSecret'],
@@ -506,6 +507,16 @@ function getWecomAppVirtualConfig(ocConfig: any): Record<string, any> {
   const channels = isPlainObject(ocConfig?.channels) ? ocConfig.channels : {};
   const wecom = isPlainObject(channels.wecom) ? channels.wecom : {};
   const agent = isPlainObject(wecom.agent) ? { ...wecom.agent } : {};
+  if (agent.token === undefined && wecom.token !== undefined) {
+    agent.token = wecom.token;
+  }
+  if (agent.encodingAESKey === undefined) {
+    if (wecom.encodingAESKey !== undefined) agent.encodingAESKey = wecom.encodingAESKey;
+    else if (wecom.encodingAesKey !== undefined) agent.encodingAESKey = wecom.encodingAesKey;
+  }
+  if (agent.encodingAESKey === undefined && agent.encodingAesKey !== undefined) {
+    agent.encodingAESKey = agent.encodingAesKey;
+  }
   const virtual = isPlainObject(channels['wecom-app']) ? channels['wecom-app'] : {};
   if (virtual.enabled !== undefined) agent.enabled = virtual.enabled;
   else if (agent.enabled === undefined) agent.enabled = false;
@@ -886,6 +897,13 @@ export default function Channels() {
       const cfg = { ...ocChannels[channelId] } as any;
       if (!String(cfg.clientSecret || '').trim() && String(cfg.appSecret || '').trim()) {
         cfg.clientSecret = cfg.appSecret;
+      }
+      return cfg;
+    }
+    if (channelId === 'wecom' && isPlainObject(ocChannels[channelId])) {
+      const cfg = { ...ocChannels[channelId] } as any;
+      if (cfg.encodingAESKey === undefined && cfg.encodingAesKey !== undefined) {
+        cfg.encodingAESKey = cfg.encodingAesKey;
       }
       return cfg;
     }
