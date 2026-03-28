@@ -841,8 +841,8 @@ func TestUpdatePreservesChannelConfigWhenRegistryReinstallFails(t *testing.T) {
 		t.Fatalf("mkdir plugin dir: %v", err)
 	}
 	data, _ := json.Marshal(map[string]interface{}{
-		"id":          "feishu",
-		"name":        "Feishu",
+		"id":          "sample-plugin",
+		"name":        "Sample Plugin",
 		"version":     "1.0.0",
 		"description": "installed plugin",
 	})
@@ -852,7 +852,7 @@ func TestUpdatePreservesChannelConfigWhenRegistryReinstallFails(t *testing.T) {
 
 	seed := map[string]interface{}{
 		"channels": map[string]interface{}{
-			"feishu": map[string]interface{}{
+			"sample-plugin": map[string]interface{}{
 				"enabled":   true,
 				"appId":     "cli_xxx",
 				"appSecret": "secret_xxx",
@@ -860,10 +860,10 @@ func TestUpdatePreservesChannelConfigWhenRegistryReinstallFails(t *testing.T) {
 		},
 		"plugins": map[string]interface{}{
 			"entries": map[string]interface{}{
-				"feishu": map[string]interface{}{"enabled": true},
+				"sample-plugin": map[string]interface{}{"enabled": true},
 			},
 			"installs": map[string]interface{}{
-				"feishu": map[string]interface{}{"installPath": pluginDir},
+				"sample-plugin": map[string]interface{}{"installPath": pluginDir},
 			},
 		},
 	}
@@ -874,13 +874,13 @@ func TestUpdatePreservesChannelConfigWhenRegistryReinstallFails(t *testing.T) {
 
 	m := &Manager{
 		cfg:        &config.Config{OpenClawDir: openClawDir},
-		plugins:    map[string]*InstalledPlugin{"feishu": {PluginMeta: PluginMeta{ID: "feishu", Name: "Feishu"}, Source: "npm", Dir: pluginDir}},
-		registry:   &Registry{Plugins: []RegistryPlugin{{PluginMeta: PluginMeta{ID: "feishu", Name: "Feishu", Version: "2.0.0"}, DownloadURL: server.URL + "/plugin.zip"}}},
+		plugins:    map[string]*InstalledPlugin{"sample-plugin": {PluginMeta: PluginMeta{ID: "sample-plugin", Name: "Sample Plugin"}, Source: "npm", Dir: pluginDir}},
+		registry:   &Registry{Plugins: []RegistryPlugin{{PluginMeta: PluginMeta{ID: "sample-plugin", Name: "Sample Plugin", Version: "2.0.0"}, DownloadURL: server.URL + "/plugin.zip"}}},
 		pluginsDir: pluginsDir,
 		configFile: filepath.Join(dir, "plugins.json"),
 	}
 
-	if err := m.Update("feishu"); err == nil {
+	if err := m.Update("sample-plugin"); err == nil {
 		t.Fatalf("expected registry reinstall failure to be returned")
 	}
 
@@ -889,29 +889,30 @@ func TestUpdatePreservesChannelConfigWhenRegistryReinstallFails(t *testing.T) {
 		t.Fatalf("ReadOpenClawJSON: %v", err)
 	}
 	channels, _ := saved["channels"].(map[string]interface{})
-	if _, ok := channels["feishu"]; !ok {
+	if _, ok := channels["sample-plugin"]; !ok {
 		t.Fatalf("expected channel config to survive failed update, got %#v", channels)
 	}
-	if _, ok := m.plugins["feishu"]; ok {
+	if _, ok := m.plugins["sample-plugin"]; ok {
 		t.Fatalf("expected failed update to leave plugin uninstalled until a fresh install succeeds")
 	}
 
 	validServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/zip")
 		_, _ = w.Write(makePluginArchive(t, map[string]interface{}{
-			"id":          "feishu",
-			"name":        "Feishu",
+			"id":          "sample-plugin",
+			"name":        "Sample Plugin",
 			"version":     "2.0.0",
 			"description": "updated plugin",
 		}))
 	}))
 	defer validServer.Close()
 
-	m.registry.Plugins[0].DownloadURL = validServer.URL + "/plugin.zip"
-	if err := m.Install("feishu", ""); err != nil {
+	archiveURL := validServer.URL + "/plugin.zip"
+	m.registry.Plugins[0].DownloadURL = archiveURL
+	if err := m.Install("sample-plugin", archiveURL); err != nil {
 		t.Fatalf("expected fresh install after failed update to succeed, got %v", err)
 	}
-	if _, ok := m.plugins["feishu"]; !ok {
+	if _, ok := m.plugins["sample-plugin"]; !ok {
 		t.Fatalf("expected plugin to be installable again after failed update")
 	}
 }
