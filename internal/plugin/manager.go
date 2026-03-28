@@ -263,6 +263,9 @@ func resolvePluginInstallStrategy(regPlugin *RegistryPlugin, source string) plug
 	if regPlugin == nil {
 		return pluginInstallStrategy{}
 	}
+	if preferred := preferredPluginDownloadURL(regPlugin); preferred != "" {
+		return pluginInstallStrategy{kind: "download", target: preferred}
+	}
 	if regPlugin.NpmPackage != "" {
 		return pluginInstallStrategy{kind: "npm", target: regPlugin.NpmPackage}
 	}
@@ -273,6 +276,18 @@ func resolvePluginInstallStrategy(regPlugin *RegistryPlugin, source string) plug
 		return pluginInstallStrategy{kind: "download", target: regPlugin.GitURL}
 	}
 	return pluginInstallStrategy{}
+}
+
+func preferredPluginDownloadURL(regPlugin *RegistryPlugin) string {
+	if regPlugin == nil {
+		return ""
+	}
+	switch regPlugin.ID {
+	case "qqbot":
+		return "https://raw.githubusercontent.com/zhaoxinyi02/ClawPanel-Plugins/main/official/qqbot/qqbot-1.2.2.tgz"
+	default:
+		return ""
+	}
 }
 
 // Install installs a plugin from registry or URL
@@ -1419,6 +1434,8 @@ func isTransientGitCloneError(msg string) bool {
 }
 
 func (m *Manager) installFromArchive(url, dest string) error {
+	return m.installFromArchiveWithRetry(url, dest)
+
 	client := &http.Client{Timeout: 120 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
@@ -1451,7 +1468,7 @@ func (m *Manager) installFromArchive(url, dest string) error {
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("解压 zip 失败: %v: %s", err, strings.TrimSpace(string(out)))
 		}
-	} else if strings.HasSuffix(url, ".tar.gz") {
+	} else if strings.HasSuffix(url, ".tar.gz") || strings.HasSuffix(url, ".tgz") {
 		cmd := exec.Command("tar", "-xzf", tmpFile, "-C", dest)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("解压 tar.gz 失败: %v: %s", err, strings.TrimSpace(string(out)))
@@ -1490,6 +1507,85 @@ func flattenExtractedArchiveRoot(dest string) error {
 		}
 	}
 	return os.Remove(rootDir)
+}
+
+func (m *Manager) installFromArchiveWithRetry(url, dest string) error {
+	client := &http.Client{
+		Timeout: 120 * time.Second,
+		Transport: &http.Transport{
+			Proxy:               http.ProxyFromEnvironment,
+			ForceAttemptHTTP2:   false,
+			MaxIdleConns:        10,
+			IdleConnTimeout:     30 * time.Second,
+			TLSHandshakeTimeout: 15 * time.Second,
+		},
+	}
+
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		return err
+	}
+	tmpFile := filepath.Join(dest, "plugin-archive.tmp")
+	defer os.Remove(tmpFile)
+
+	var lastErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		_ = os.Remove(tmpFile)
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("User-Agent", "ClawPanel-PluginInstaller")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			time.Sleep(time.Duration(attempt) * time.Second)
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			return fmt.Errorf("HTTP %d", resp.StatusCode)
+		}
+
+		f, err := os.Create(tmpFile)
+		if err != nil {
+			resp.Body.Close()
+			return err
+		}
+		_, copyErr := io.Copy(f, resp.Body)
+		closeErr := f.Close()
+		resp.Body.Close()
+		if copyErr == nil && closeErr == nil {
+			lastErr = nil
+			break
+		}
+		if copyErr != nil {
+			lastErr = copyErr
+		} else {
+			lastErr = closeErr
+		}
+		time.Sleep(time.Duration(attempt) * time.Second)
+	}
+	if lastErr != nil {
+		return fmt.Errorf("下载插件失败: %v", lastErr)
+	}
+
+	if strings.HasSuffix(url, ".zip") {
+		cmd := exec.Command("unzip", "-o", tmpFile, "-d", dest)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("解压 zip 失败: %v: %s", err, strings.TrimSpace(string(out)))
+		}
+	} else if strings.HasSuffix(url, ".tar.gz") || strings.HasSuffix(url, ".tgz") {
+		cmd := exec.Command("tar", "-xzf", tmpFile, "-C", dest)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("解压 tar.gz 失败: %v: %s", err, strings.TrimSpace(string(out)))
+		}
+	}
+
+	if err := flattenExtractedArchiveRoot(dest); err != nil {
+		return err
+	}
+	return nil
 }
 
 // copyDir copies a directory recursively

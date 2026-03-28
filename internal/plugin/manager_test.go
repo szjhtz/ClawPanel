@@ -42,6 +42,23 @@ func TestResolvePluginInstallStrategyUsesExplicitNpmSource(t *testing.T) {
 	}
 }
 
+func TestResolvePluginInstallStrategyUsesPreferredQQBotTarball(t *testing.T) {
+	t.Parallel()
+
+	strategy := resolvePluginInstallStrategy(&RegistryPlugin{
+		PluginMeta: PluginMeta{ID: "qqbot"},
+		GitURL:     "https://github.com/zhaoxinyi02/ClawPanel-Plugins.git",
+		InstallSubDir: "official/qqbot",
+	}, "")
+
+	if strategy.kind != "download" {
+		t.Fatalf("expected qqbot to use direct download, got %#v", strategy)
+	}
+	if !strings.HasSuffix(strategy.target, "/official/qqbot/qqbot-1.2.2.tgz") {
+		t.Fatalf("unexpected qqbot tarball url: %q", strategy.target)
+	}
+}
+
 func TestRegistryFetchURLsSkipsInsecureMirrorByDefault(t *testing.T) {
 	t.Parallel()
 
