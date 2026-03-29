@@ -532,20 +532,39 @@ function isWecomBuiltinEnabled(ocConfig: any): boolean {
   return wecomEnabled && !isWecomAppEnabled(ocConfig);
 }
 // Determine channel status: 'enabled' (green), 'configured' (red/orange), 'unconfigured' (gray)
-function getChannelStatus(ch: ChannelDef, ocConfig: any): 'enabled' | 'configured' | 'unconfigured' {
+function getChannelStatus(
+  ch: ChannelDef,
+  ocConfig: any,
+  installedPlugins: any[],
+  qqChannelState: any,
+): 'enabled' | 'configured' | 'unconfigured' {
   // wecom-app is backed by channels.wecom.agent
   const chConf = ch.id === 'wecom-app'
     ? getWecomAppVirtualConfig(ocConfig)
     : (ocConfig?.channels?.[ch.id] || {});
   const pluginConf = ocConfig?.plugins?.entries?.[ch.id] || {};
+  const pluginInstalled = ch.id === 'qq'
+    ? isQQActuallyInstalled(installedPlugins, qqChannelState)
+    : ch.type === 'plugin'
+      ? (
+          ch.id === 'feishu'
+            ? installedPlugins.some((p: any) => (FEISHU_ALL_IDS as readonly string[]).includes(p.id))
+            : ch.id === 'wecom'
+              ? installedPlugins.some((p: any) => p.id === 'wecom' || p.id === 'wecom-openclaw-plugin')
+              : ch.id === 'wecom-app'
+                ? installedPlugins.some((p: any) => p.id === 'wecom' || p.id === 'wecom-app')
+                : installedPlugins.some((p: any) => p.id === ch.id)
+        )
+      : true;
   // 飞书特殊处理：任一变体 enabled 即视为 enabled
-  const isEnabled = ch.id === 'feishu'
+  const configuredEnabled = ch.id === 'feishu'
     ? (pluginConf.enabled || !!getEnabledPluginEntry(ocConfig?.plugins?.entries || {}, FEISHU_OFFICIAL_IDS) || chConf.enabled)
     : ch.id === 'wecom-app'
       ? isWecomAppEnabled(ocConfig)
       : ch.id === 'wecom'
         ? isWecomBuiltinEnabled(ocConfig)
         : (chConf.enabled || pluginConf.enabled);
+  const isEnabled = configuredEnabled && pluginInstalled;
   // Check if any config field has a value
   const hasConfig = ch.configFields.some(f => {
     const v = getNestedValue(chConf, f.key);
@@ -1449,11 +1468,11 @@ export default function Channels() {
   // Sort channels: enabled first, then configured, then unconfigured
   const sortedBuiltin = CHANNEL_DEFS.filter(c => c.type === 'builtin').sort((a, b) => {
     const order = { enabled: 0, configured: 1, unconfigured: 2 };
-    return order[getChannelStatus(a, ocConfig)] - order[getChannelStatus(b, ocConfig)];
+    return order[getChannelStatus(a, ocConfig, installedPlugins, qqChannelState)] - order[getChannelStatus(b, ocConfig, installedPlugins, qqChannelState)];
   });
   const sortedPlugin = CHANNEL_DEFS.filter(c => c.type === 'plugin').sort((a, b) => {
     const order = { enabled: 0, configured: 1, unconfigured: 2 };
-    return order[getChannelStatus(a, ocConfig)] - order[getChannelStatus(b, ocConfig)];
+    return order[getChannelStatus(a, ocConfig, installedPlugins, qqChannelState)] - order[getChannelStatus(b, ocConfig, installedPlugins, qqChannelState)];
   });
 
   const currentFeishuAllowlistEntries = parseDelimitedList(currentFeishuGroupAllowFrom);
@@ -1630,7 +1649,7 @@ export default function Channels() {
               <h3 className="text-[10px] font-semibold text-gray-400 mb-2 px-2 uppercase tracking-wide">{t.channels.builtinChannels}</h3>
               <div className="space-y-1">
                 {sortedBuiltin.map(ch => {
-                  const st = getChannelStatus(ch, ocConfig);
+                  const st = getChannelStatus(ch, ocConfig, installedPlugins, qqChannelState);
                   return (
                     <button key={ch.id} onClick={() => syncSelectedChannel(ch.id)}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm transition-all duration-200 group ${
@@ -1657,7 +1676,7 @@ export default function Channels() {
                 <h3 className="text-[10px] font-semibold text-gray-400 mb-2 px-2 uppercase tracking-wide">{t.channels.pluginChannels}</h3>
                 <div className="space-y-1">
                   {sortedPlugin.map(ch => {
-                    const st = getChannelStatus(ch, ocConfig);
+                    const st = getChannelStatus(ch, ocConfig, installedPlugins, qqChannelState);
                     return (
                       <button key={ch.id} onClick={() => syncSelectedChannel(ch.id)}
                         className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm transition-all duration-200 group ${
@@ -1797,10 +1816,10 @@ export default function Channels() {
                     <div className="flex items-center gap-3">
                       <h3 className="font-bold text-base text-gray-900 dark:text-white">{currentDef.label} {t.channels.config}</h3>
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                        getChannelStatus(currentDef, ocConfig) === 'enabled' ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400' :
-                        getChannelStatus(currentDef, ocConfig) === 'configured' ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400' :
+                        getChannelStatus(currentDef, ocConfig, installedPlugins, qqChannelState) === 'enabled' ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400' :
+                        getChannelStatus(currentDef, ocConfig, installedPlugins, qqChannelState) === 'configured' ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400' :
                         'bg-gray-100 dark:bg-gray-800 text-gray-500'
-                      }`}>{statusLabel(getChannelStatus(currentDef, ocConfig))}</span>
+                      }`}>{statusLabel(getChannelStatus(currentDef, ocConfig, installedPlugins, qqChannelState))}</span>
                     </div>
                     <p className="text-xs text-gray-500 mt-1">{currentDef.description}</p>
                   </div>

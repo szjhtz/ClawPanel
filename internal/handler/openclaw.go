@@ -334,10 +334,10 @@ func GetChannels(cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func qqPluginInstalled(cfg *config.Config) bool {
+func pluginInstalled(cfg *config.Config, pluginID string) bool {
 	for _, candidate := range []string{
-		filepath.Join(cfg.OpenClawDir, "extensions", "qq"),
-		filepath.Join(filepath.Dir(cfg.OpenClawDir), "extensions", "qq"),
+		filepath.Join(cfg.OpenClawDir, "extensions", pluginID),
+		filepath.Join(filepath.Dir(cfg.OpenClawDir), "extensions", pluginID),
 	} {
 		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
 			return true
@@ -346,12 +346,25 @@ func qqPluginInstalled(cfg *config.Config) bool {
 	return false
 }
 
+func qqPluginInstalled(cfg *config.Config) bool {
+	return pluginInstalled(cfg, "qq")
+}
+
+func qqbotPluginInstalled(cfg *config.Config) bool {
+	return pluginInstalled(cfg, "qqbot")
+}
+
 // SaveChannel 保存通道配置
 func SaveChannel(cfg *config.Config, procMgr *process.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.Param("id")
 		if id == "qq" && !qqPluginInstalled(cfg) {
-			c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "QQ 个人号插件未安装，请先安装 QQ 个人号插件后再配置通道"})
+			c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "QQ plugin is not installed; install QQ before configuring the channel"})
+			return
+		}
+
+		if id == "qqbot" && !qqbotPluginInstalled(cfg) {
+			c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "QQBot plugin is not installed; install QQBot before configuring the channel"})
 			return
 		}
 		var body map[string]interface{}
@@ -1116,7 +1129,12 @@ func ToggleChannel(cfg *config.Config, procMgr *process.Manager, napcatMon *moni
 			return
 		}
 		if req.ChannelID == "qq" && !qqPluginInstalled(cfg) {
-			c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "QQ 个人号插件未安装，请先安装 QQ 个人号插件"})
+			c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "QQ plugin is not installed; install QQ before enabling the channel"})
+			return
+		}
+
+		if req.ChannelID == "qqbot" && !qqbotPluginInstalled(cfg) {
+			c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "QQBot plugin is not installed; install QQBot before enabling the channel"})
 			return
 		}
 

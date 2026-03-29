@@ -849,6 +849,35 @@ func (m *Manager) scanInstalledPlugins() {
 	if m.cfg.IsLiteEdition() {
 		m.scanLiteRuntimePlugins()
 	}
+	m.pruneMissingPlugins()
+}
+
+func (m *Manager) pruneMissingPlugins() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	changed := false
+	for id, plugin := range m.plugins {
+		if plugin == nil {
+			delete(m.plugins, id)
+			changed = true
+			continue
+		}
+		dir := strings.TrimSpace(plugin.Dir)
+		if dir == "" {
+			delete(m.plugins, id)
+			changed = true
+			continue
+		}
+		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+			delete(m.plugins, id)
+			changed = true
+		}
+	}
+
+	if changed {
+		m.savePluginsStateUnlocked()
+	}
 }
 
 func (m *Manager) scanLiteRuntimePlugins() {

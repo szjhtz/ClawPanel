@@ -139,6 +139,8 @@ function DashboardPage({ logEntries, refreshLog }: DashboardProps) {
     }
   }
 
+  const liveChannelCount = connectedChannels.filter((channel) => channel.status !== t.common.notLoggedIn).length;
+
   const [installingOC, setInstallingOC] = useState(false);
   const [installOpenClawMsg, setInstallOpenClawMsg] = useState('');
   const [installOpenClawErr, setInstallOpenClawErr] = useState('');
@@ -262,7 +264,7 @@ function DashboardPage({ logEntries, refreshLog }: DashboardProps) {
         <StatCard icon={TrendingUp} label={t.dashboard.todayMessages} value={`${messageLogCount}`} unit={t.dashboard.msgUnit || undefined}
           sub={`${t.dashboard.received} ${inboundCount} / ${t.dashboard.sent} ${botCount}`} color="text-amber-600" bg="bg-amber-50 dark:bg-amber-900/20" modern={modern} />
         {modern && (
-          <StatCard icon={Users} label={t.dashboard.connectedChannels} value={`${connectedChannels.filter(c => c.status === t.common.connected).length}`} unit={t.dashboard.channelUnit || undefined}
+          <StatCard icon={Users} label={t.dashboard.connectedChannels} value={`${liveChannelCount}`} unit={t.dashboard.channelUnit || undefined}
             sub={connectedChannels.length > 0 ? 'Live status' : t.dashboard.noChannels} color="text-indigo-600" bg="bg-indigo-50 dark:bg-indigo-900/20" modern={modern} />
         )}
       </div>

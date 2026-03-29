@@ -1037,6 +1037,26 @@ func TestSaveChannelRejectsQQWhenPluginMissing(t *testing.T) {
 	}
 }
 
+func TestSaveChannelRejectsQQBotWhenPluginMissing(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	dir := t.TempDir()
+	cfg := &config.Config{OpenClawDir: dir}
+	r := gin.New()
+	r.PUT("/openclaw/channels/:id", SaveChannel(cfg, nil))
+
+	body := []byte(`{"enabled":true,"appId":"123","clientSecret":"secret"}`)
+	req := httptest.NewRequest(http.MethodPut, "/openclaw/channels/qqbot", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d, body=%s", w.Code, w.Body.String())
+	}
+}
+
 func TestToggleChannelRejectsQQWhenPluginMissing(t *testing.T) {
 	t.Parallel()
 	gin.SetMode(gin.TestMode)
@@ -1047,6 +1067,26 @@ func TestToggleChannelRejectsQQWhenPluginMissing(t *testing.T) {
 	r.PUT("/openclaw/channels/toggle", ToggleChannel(cfg, nil, nil))
 
 	body := []byte(`{"channelId":"qq","enabled":true}`)
+	req := httptest.NewRequest(http.MethodPut, "/openclaw/channels/toggle", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d, body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestToggleChannelRejectsQQBotWhenPluginMissing(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	dir := t.TempDir()
+	cfg := &config.Config{OpenClawDir: dir}
+	r := gin.New()
+	r.PUT("/openclaw/channels/toggle", ToggleChannel(cfg, nil, nil))
+
+	body := []byte(`{"channelId":"qqbot","enabled":true}`)
 	req := httptest.NewRequest(http.MethodPut, "/openclaw/channels/toggle", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()

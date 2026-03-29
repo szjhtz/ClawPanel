@@ -655,6 +655,48 @@ func TestScanInstalledPluginsIsReadOnly(t *testing.T) {
 	}
 }
 
+func TestScanInstalledPluginsPrunesMissingStateEntries(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	openClawDir := filepath.Join(dir, "openclaw")
+	if err := os.MkdirAll(openClawDir, 0o755); err != nil {
+		t.Fatalf("mkdir openclaw dir: %v", err)
+	}
+	pluginsDir := filepath.Join(dir, "extensions")
+	if err := os.MkdirAll(pluginsDir, 0o755); err != nil {
+		t.Fatalf("mkdir plugins dir: %v", err)
+	}
+
+	configFile := filepath.Join(dir, "plugins.json")
+	m := &Manager{
+		cfg:        &config.Config{OpenClawDir: openClawDir},
+		plugins: map[string]*InstalledPlugin{
+			"ghost-plugin": {
+				PluginMeta: PluginMeta{ID: "ghost-plugin", Name: "Ghost Plugin"},
+				Dir:        filepath.Join(pluginsDir, "ghost-plugin"),
+				Source:     "local",
+			},
+		},
+		pluginsDir: pluginsDir,
+		configFile: configFile,
+	}
+
+	m.scanInstalledPlugins()
+
+	if _, ok := m.plugins["ghost-plugin"]; ok {
+		t.Fatalf("expected missing plugin state entry to be pruned")
+	}
+
+	raw, err := os.ReadFile(configFile)
+	if err != nil {
+		t.Fatalf("read pruned plugins.json: %v", err)
+	}
+	if string(raw) != "{}" {
+		t.Fatalf("expected pruned plugins.json to be empty object, got %s", string(raw))
+	}
+}
+
 // TestReconcilePluginStatesWritesDeferredChanges verifies that
 // reconcilePluginStates writes the manifest and config files for flagged
 // plugins and clears the flags afterwards.

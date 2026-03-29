@@ -16,6 +16,7 @@ import (
 )
 
 const sessionScannerMaxTokenSize = 16 * 1024 * 1024
+const dashboardSessionPreviewLimit = 20
 
 // SessionInfo represents a session entry from sessions.json
 type SessionInfo struct {
@@ -534,7 +535,9 @@ func loadSessionsByAgent(cfg *config.Config, agentID string) []SessionInfo {
 		}
 		si.SessionFile = getString(v, "sessionFile")
 		if si.SessionFile != "" {
-			si.MessageCount, si.RecentMessages = summarizeSessionTranscript(si.SessionFile, 3)
+			// The dashboard recent-activity feed relies on this preview window.
+			// Keep a wider tail so slightly older chat turns do not disappear.
+			si.MessageCount, si.RecentMessages = summarizeSessionTranscript(si.SessionFile, dashboardSessionPreviewLimit)
 		}
 		sessions = append(sessions, si)
 	}
