@@ -126,6 +126,32 @@ func preserveHiddenOpenClawFields(dst, src map[string]interface{}) {
 			dstTools = map[string]interface{}{}
 		}
 		preserveMissingMapFields(dstTools, srcTools)
+		// OpenClaw forbids both "allow" and "alsoAllow" in the same scope.
+		// If merge introduced a conflict, merge alsoAllow items into allow,
+		// then drop alsoAllow to resolve the conflict without losing tools.
+		if allowVal, hasAllow := dstTools["allow"]; hasAllow {
+			if alsoAllowVal, hasAlsoAllow := dstTools["alsoAllow"]; hasAlsoAllow {
+				if allowList, ok := allowVal.([]interface{}); ok {
+					if alsoList, ok2 := alsoAllowVal.([]interface{}); ok2 {
+						existing := make(map[string]bool, len(allowList))
+						for _, v := range allowList {
+							if s, ok := v.(string); ok {
+								existing[s] = true
+							}
+						}
+						for _, v := range alsoList {
+							if s, ok := v.(string); ok {
+								if !existing[s] {
+									allowList = append(allowList, v)
+								}
+							}
+						}
+						dstTools["allow"] = allowList
+					}
+				}
+				delete(dstTools, "alsoAllow")
+			}
+		}
 		if len(dstTools) > 0 {
 			dst["tools"] = dstTools
 		}
