@@ -202,6 +202,8 @@ func runServer(stopCh chan struct{}) {
 		api.POST("/workflows/intercept", workflowRuntime.InterceptInbound())
 		api.Any("/panel/updater", handler.ProxyUpdater(cfg))
 		api.Any("/panel/updater/*path", handler.ProxyUpdater(cfg))
+		api.GET("/panel/update-mirror/:edition", handler.GetPanelUpdateMirror(cfg))
+		api.GET("/panel/update-mirror/:edition/files/:name", handler.GetPanelUpdateMirrorFile(cfg))
 
 		// 需要认证的路由
 		auth := api.Group("")
@@ -435,6 +437,9 @@ func runServer(stopCh chan struct{}) {
 	r.GET("/ws", wsHub.HandleWebSocket(func(token string) bool {
 		return middleware.ValidateToken(token, cfg.JWTSecret)
 	}))
+	r.GET("/scripts/:name", handler.PublicScript(cfg))
+	r.GET("/plugins/:name", handler.PublicPluginAsset(cfg))
+	r.GET("/bin/:name", handler.PublicBinaryAsset(cfg))
 
 	// 内嵌前端静态资源
 	frontendDist, err := fs.Sub(frontendFS, "frontend/dist")

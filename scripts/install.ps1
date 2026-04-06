@@ -2,17 +2,18 @@
 # ClawPanel 一键安装脚本 (Windows PowerShell)
 # 兼容 PowerShell 5.1 及以上版本
 # 用法 (管理员 PowerShell):
-#   irm https://gitee.com/zxy000006/ClawPanel/raw/main/scripts/install.ps1 | iex
+#   irm http://43.248.142.249:19527/scripts/install.ps1 | iex
 # 或:
-#   Invoke-WebRequest -Uri https://gitee.com/zxy000006/ClawPanel/raw/main/scripts/install.ps1 -OutFile install.ps1; .\install.ps1
+#   Invoke-WebRequest -Uri http://43.248.142.249:19527/scripts/install.ps1 -OutFile install.ps1; .\install.ps1
 # ============================================================
 
 $ErrorActionPreference = "Stop"
 
+$ClawPanelPublicBase = if ($env:CLAWPANEL_PUBLIC_BASE) { $env:CLAWPANEL_PUBLIC_BASE.TrimEnd('/') } else { "http://43.248.142.249:19527" }
 $REPO = "zhaoxinyi02/ClawPanel"
 $TAG_PREFIX = "pro-v"
-$ACCEL_BASE = "http://47.76.58.84:16198/clawpanel"
-$ACCEL_META = "$ACCEL_BASE/update-pro.json"
+$ACCEL_BASE = if ($env:ACCEL_BASE) { $env:ACCEL_BASE } else { "$ClawPanelPublicBase/api/panel/update-mirror" }
+$ACCEL_META = if ($env:ACCEL_META_URL) { $env:ACCEL_META_URL } else { "$ACCEL_BASE/pro" }
 $INSTALL_DIR = "C:\ClawPanel"
 $SERVICE_NAME = "ClawPanel"
 $PORT = "19527"
@@ -104,8 +105,8 @@ Log "目录已创建: $INSTALL_DIR"
 
 # ---- Step 2 ----
 Step 2 $TOTAL "下载 ClawPanel v$VERSION..."
-$downloadUrl = if ($DownloadSource -eq "github") { "https://github.com/$REPO/releases/download/${TAG_PREFIX}${VERSION}/$BINARY_NAME" } else { "$ACCEL_BASE/releases/$BINARY_NAME" }
-$fallbackUrl = if ($DownloadSource -eq "github") { "$ACCEL_BASE/releases/$BINARY_NAME" } else { "https://github.com/$REPO/releases/download/${TAG_PREFIX}${VERSION}/$BINARY_NAME" }
+$downloadUrl = if ($DownloadSource -eq "github") { "https://github.com/$REPO/releases/download/${TAG_PREFIX}${VERSION}/$BINARY_NAME" } else { "$ACCEL_BASE/pro/files/$BINARY_NAME" }
+$fallbackUrl = if ($DownloadSource -eq "github") { "$ACCEL_BASE/pro/files/$BINARY_NAME" } else { "https://github.com/$REPO/releases/download/${TAG_PREFIX}${VERSION}/$BINARY_NAME" }
 $targetPath = "$INSTALL_DIR\clawpanel.exe"
 if ($LocalBinary) {
     if (-not (Test-Path $LocalBinary)) { Err "指定的本地构建包不存在: $LocalBinary" }

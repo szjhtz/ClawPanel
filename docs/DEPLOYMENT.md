@@ -20,14 +20,16 @@
 ### Linux / macOS
 
 ```bash
-curl -fsSL http://47.76.58.84:16198/clawpanel/scripts/install.sh | sudo bash
+export CLAWPANEL_PUBLIC_BASE="http://43.248.142.249:19527"
+curl -fsSL "$CLAWPANEL_PUBLIC_BASE/scripts/install.sh" | sudo CLAWPANEL_PUBLIC_BASE="$CLAWPANEL_PUBLIC_BASE" bash
 ```
 
 如果需要以非 root 用户运行服务，可以先创建用户，再执行：
 
 ```bash
 sudo useradd -r -m -s /bin/bash clawpanel
-curl -fsSL http://47.76.58.84:16198/clawpanel/scripts/install.sh | sudo CLAWPANEL_SERVICE_USER=clawpanel bash
+export CLAWPANEL_PUBLIC_BASE="http://43.248.142.249:19527"
+curl -fsSL "$CLAWPANEL_PUBLIC_BASE/scripts/install.sh" | sudo CLAWPANEL_PUBLIC_BASE="$CLAWPANEL_PUBLIC_BASE" CLAWPANEL_SERVICE_USER=clawpanel bash
 ```
 
 安装完成后默认访问：
@@ -45,7 +47,8 @@ http://<your-host>:19527
 ## Lite 安装
 
 ```bash
-curl -fsSL http://47.76.58.84:16198/clawpanel/scripts/install-lite.sh | sudo bash
+export CLAWPANEL_PUBLIC_BASE="http://43.248.142.249:19527"
+curl -fsSL "$CLAWPANEL_PUBLIC_BASE/scripts/install-lite.sh" | sudo CLAWPANEL_PUBLIC_BASE="$CLAWPANEL_PUBLIC_BASE" bash
 ```
 
 Lite 默认同样监听 `19527` 端口，并自带 OpenClaw 运行时与工作目录。
@@ -79,13 +82,15 @@ sudo systemctl restart clawpanel
 ### Pro
 
 ```bash
-curl -fsSL http://47.76.58.84:16198/clawpanel/scripts/update-pro.sh | sudo bash
+export CLAWPANEL_PUBLIC_BASE="http://43.248.142.249:19527"
+curl -fsSL "$CLAWPANEL_PUBLIC_BASE/scripts/update-pro.sh" | sudo CLAWPANEL_PUBLIC_BASE="$CLAWPANEL_PUBLIC_BASE" bash
 ```
 
 ### Lite
 
 ```bash
-curl -fsSL https://gitee.com/zxy000006/ClawPanel/raw/main/scripts/update-lite.sh | sudo bash
+export CLAWPANEL_PUBLIC_BASE="http://43.248.142.249:19527"
+curl -fsSL "$CLAWPANEL_PUBLIC_BASE/scripts/update-lite.sh" | sudo CLAWPANEL_PUBLIC_BASE="$CLAWPANEL_PUBLIC_BASE" bash
 ```
 
 ## 常用运维命令

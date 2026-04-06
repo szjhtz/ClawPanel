@@ -147,7 +147,8 @@ Built-in AI chat assistant floating panel, supports multi-provider/multi-model s
 **Linux / macOS**
 
 ```bash
-curl -fsSL http://39.102.53.188:16198/clawpanel/scripts/install.sh -o install.sh && sudo bash install.sh
+export CLAWPANEL_PUBLIC_BASE="http://43.248.142.249:19527"
+curl -fsSL "$CLAWPANEL_PUBLIC_BASE/scripts/install.sh" -o install.sh && sudo CLAWPANEL_PUBLIC_BASE="$CLAWPANEL_PUBLIC_BASE" bash install.sh
 ```
 
 Auto-completes: download binary → install to `/opt/clawpanel` → register system service → auto-start → configure firewall → start.
@@ -155,7 +156,8 @@ Auto-completes: download binary → install to `/opt/clawpanel` → register sys
 **Windows (PowerShell as Admin)**
 
 ```powershell
-irm http://39.102.53.188:16198/clawpanel/scripts/install.ps1 | iex
+$env:CLAWPANEL_PUBLIC_BASE="http://43.248.142.249:19527"
+irm "$env:CLAWPANEL_PUBLIC_BASE/scripts/install.ps1" | iex
 ```
 
 Or download `ClawPanel-Setup.exe` from [Releases](https://github.com/zhaoxinyi02/ClawPanel/releases) and run as administrator.

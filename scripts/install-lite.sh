@@ -1,6 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
+CLAWPANEL_PUBLIC_BASE="${CLAWPANEL_PUBLIC_BASE:-http://43.248.142.249:19527}"
+CLAWPANEL_PUBLIC_BASE="${CLAWPANEL_PUBLIC_BASE%/}"
 INSTALL_DIR="/opt/clawpanel-lite"
 SERVICE_NAME="clawpanel-lite"
 BIN_NAME="clawpanel-lite"
@@ -9,8 +11,8 @@ REPO="zhaoxinyi02/ClawPanel"
 GITEE_REPO="zxy000006/ClawPanel"
 TAG_PREFIX="lite-v"
 GITEE_RAW_BASE="https://gitee.com/${GITEE_REPO}/raw/main"
-ACCEL_BASE="http://47.76.58.84:16198/clawpanel"
-ACCEL_META_URL="${ACCEL_BASE}/update-lite.json"
+ACCEL_BASE="${ACCEL_BASE:-${CLAWPANEL_PUBLIC_BASE}/api/panel/update-mirror}"
+ACCEL_META_URL="${ACCEL_META_URL:-${ACCEL_BASE}/lite}"
 GITHUB_RELEASES_API="https://api.github.com/repos/${REPO}/releases?per_page=20"
 
 RED='\033[31m'
@@ -142,9 +144,9 @@ download_with_selected_source() {
   local primary_url secondary_url
   if [[ "$primary" == "github" ]]; then
     primary_url="https://github.com/${REPO}/releases/download/${TAG_PREFIX}${VERSION}/${package_name}"
-    secondary_url="${ACCEL_BASE}/releases/${package_name}"
+    secondary_url="${ACCEL_BASE}/lite/files/${package_name}"
   else
-    primary_url="${ACCEL_BASE}/releases/${package_name}"
+    primary_url="${ACCEL_BASE}/lite/files/${package_name}"
     secondary_url="https://github.com/${REPO}/releases/download/${TAG_PREFIX}${VERSION}/${package_name}"
   fi
   if download_file "$primary_url" "$dest"; then
